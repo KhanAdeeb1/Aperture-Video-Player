@@ -5,7 +5,7 @@ using Aperture.Core.Storage;
 namespace Aperture.App.Services;
 
 /// <summary>
-/// Minimal error log for Milestone 1: one line per event in Logs\aperture.log and in the
+/// Minimal log (Milestones 1 and 2): one line per event in Logs\aperture.log and in the
 /// debugger output. File paths of media are not written. A structured, rolling logger
 /// replaces this in a later milestone (see docs/architecture.md).
 /// </summary>
@@ -39,6 +39,25 @@ internal static class AppLog
     public static void Error(string message, Exception? exception = null) => Write("ERROR", message, exception);
 
     public static void Warning(string message, Exception? exception = null) => Write("WARN", message, exception);
+
+    public static void Info(string message) => Write("INFO", message, null);
+
+    /// <summary>Routes a playback-engine message ("error", "warn", "info"...) to the matching level.</summary>
+    public static void FromEngine(string level, string message)
+    {
+        switch (level)
+        {
+            case "fatal" or "error":
+                Error(message);
+                break;
+            case "warn":
+                Warning(message);
+                break;
+            case "info":
+                Info(message);
+                break;
+        }
+    }
 
     private static void Write(string level, string message, Exception? exception)
     {

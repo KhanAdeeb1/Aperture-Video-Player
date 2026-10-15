@@ -9,7 +9,10 @@ public enum PlaybackFailureKind
     /// <summary>The file is not a video, or its format or codec cannot be decoded.</summary>
     Unsupported,
 
-    /// <summary>The file was found and recognised but playback failed (corrupt data, access denied, decoder error).</summary>
+    /// <summary>The file could not be read as media: unrecognised, truncated or corrupt data.</summary>
+    Damaged,
+
+    /// <summary>Anything else: access denied, no sound device, an engine error.</summary>
     Failed,
 }
 

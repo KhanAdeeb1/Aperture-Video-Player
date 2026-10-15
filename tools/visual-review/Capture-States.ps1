@@ -141,6 +141,33 @@ function Step([string] $name, [scriptblock] $body) {
 
 function Media([string] $name) { Join-Path $MediaDir $name }
 
+# Average colour of a 24 x 24 block centred at a fraction of the window's width and height.
+function Get-Colour($p, [double] $fx, [double] $fy) {
+    $r = Get-WindowRect $p
+    $cx = [int]($r.Left + ($r.Right - $r.Left) * $fx); $cy = [int]($r.Top + ($r.Bottom - $r.Top) * $fy)
+    $bitmap = New-Object System.Drawing.Bitmap 24, 24
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $graphics.CopyFromScreen($cx - 12, $cy - 12, 0, 0, $bitmap.Size)
+    $graphics.Dispose()
+    $sr = 0; $sg = 0; $sb = 0
+    for ($x = 0; $x -lt 24; $x++) { for ($y = 0; $y -lt 24; $y++) { $c = $bitmap.GetPixel($x, $y); $sr += $c.R; $sg += $c.G; $sb += $c.B } }
+    $bitmap.Dispose()
+    return @{ R = [int]($sr / 576); G = [int]($sg / 576); B = [int]($sb / 576) }
+}
+
+# Orientation Check.mp4 is amber on top and blue below; prove both reach the screen, upright.
+function Assert-VideoUpright($p, [string] $label) {
+    $top = Get-Colour $p 0.5 0.30
+    $bottom = Get-Colour $p 0.5 0.66
+    Note "${label}: top rgb($($top.R),$($top.G),$($top.B)) bottom rgb($($bottom.R),$($bottom.G),$($bottom.B))"
+    $topAmber = $top.R -gt 150 -and $top.R -gt $top.B + 60
+    $bottomBlue = $bottom.B -gt 120 -and $bottom.B -gt $bottom.R + 40
+    if ($topAmber -and $bottomBlue) { return }
+    $flipped = ($bottom.R -gt 150 -and $bottom.R -gt $bottom.B + 60) -and ($top.B -gt 120 -and $top.B -gt $top.R + 40)
+    if ($flipped) { throw "${label}: the picture is upside down" }
+    throw "${label}: the video did not reach the screen"
+}
+
 # ---------------------------------------------------------------------------------------
 Step 'First launch' {
     $p = Start-Aperture
@@ -297,10 +324,91 @@ Step 'Not a video' {
     Stop-Aperture $p
 }
 
-Step 'Unsupported codec' {
-    $p = Start-Aperture (Media 'Archive Scan.mkv')
-    Start-Sleep -Seconds 6
+Step 'Nothing playable' {
+    $p = Start-Aperture (Media 'Subtitles Only.mkv')
+    Start-Sleep -Seconds 4
     Save-Shot $p '20-unsupported-format'
+    Stop-Aperture $p
+}
+
+Step 'Video reaches the screen (GPU path)' {
+    $p = Start-Aperture (Media 'Orientation Check.mp4')
+    Start-Sleep -Seconds 3
+    Move-MouseAway
+    Start-Sleep -Seconds 5
+    Save-Shot $p '30-render-gpu'
+    Assert-VideoUpright $p 'GPU path'
+    Set-WindowSize $p 1600 900
+    Start-Sleep -Seconds 1
+    Assert-VideoUpright $p 'GPU path after resize'
+    Send-Keys $p 'f'
+    Start-Sleep -Seconds 3
+    Save-Shot $p '31-render-gpu-fullscreen' -FullScreen
+    Assert-VideoUpright $p 'GPU path in full screen'
+    Stop-Aperture $p
+}
+
+Step 'Video reaches the screen (software path)' {
+    $env:APERTURE_VIDEO_RENDERER = 'software'
+    try {
+        $p = Start-Aperture (Media 'Orientation Check.mp4')
+        Start-Sleep -Seconds 3
+        Move-MouseAway
+        Start-Sleep -Seconds 5
+        Save-Shot $p '32-render-software'
+        Assert-VideoUpright $p 'Software path'
+        Stop-Aperture $p
+    } finally { Remove-Item Env:APERTURE_VIDEO_RENDERER }
+}
+
+Step 'FFV1 plays' {
+    $p = Start-Aperture (Media 'Archive Scan.mkv')
+    Start-Sleep -Seconds 3
+    $timeline = Find-Element $p 'Timeline'
+    $before = (Get-Range $timeline).Value
+    Start-Sleep -Seconds 2
+    $after = (Get-Range $timeline).Value
+    if ($after -le $before) { throw "FFV1 did not play ($before -> $after s)" }
+    Note "Archive Scan.mkv (FFV1): position advanced $([math]::Round($before,1)) -> $([math]::Round($after,1)) s"
+    Move-MouseAway
+    Start-Sleep -Seconds 4
+    Save-Shot $p '33-ffv1-playing'
+    Stop-Aperture $p
+}
+
+Step 'Tracks, subtitles, info, picture shape, speed' {
+    $p = Start-Aperture (Media 'Night Market.mkv')
+    Start-Sleep -Seconds 3
+    Send-Keys $p 'c'
+    Start-Sleep -Milliseconds 600
+    Save-Shot $p '40-subtitles-toast'
+    Move-MouseAway
+    Start-Sleep -Seconds 5
+    Save-Shot $p '41-subtitles-shown'
+    Move-MouseToCenter $p 40
+    Start-Sleep -Milliseconds 400
+    Invoke-Element (Find-Element $p 'TracksButton')
+    Start-Sleep -Seconds 1
+    Save-Shot $p '42-tracks-menu'
+    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+    Start-Sleep -Milliseconds 500
+    Send-Keys $p 'a'
+    Start-Sleep -Milliseconds 600
+    Save-Shot $p '43-audio-switched'
+    Send-Keys $p 'i'
+    Start-Sleep -Seconds 2
+    Save-Shot $p '44-playback-info'
+    $info = Find-Element $p 'InfoSections'
+    $texts = $info.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name } | Where-Object { $_ }
+    Note "Playback info: $($texts -join ' | ')"
+    Send-Keys $p 'i'
+    Send-Keys $p 'r'
+    Start-Sleep -Milliseconds 800
+    Save-Shot $p '45-picture-fill'
+    Send-Keys $p 'rrrrr'
+    Send-Keys $p ']'
+    Start-Sleep -Milliseconds 500
+    Save-Shot $p '46-speed-toast'
     Stop-Aperture $p
 }
 

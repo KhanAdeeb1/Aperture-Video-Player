@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The libmpv playback engine: hand-written P/Invoke over the libmpv client and render
+    APIs, an event thread, and the IPlaybackEngine implementation. Platform-neutral, so its
+    tests run on Linux (system libmpv) as well as Windows (the pinned libmpv-2.dll).
+    The native library is not part of this project; see docs/build-and-test.md.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Aperture.Playback.Mpv</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Aperture.Playback.Mpv.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aperture.Core\Aperture.Core.csproj" />
+  </ItemGroup>
+
+</Project>

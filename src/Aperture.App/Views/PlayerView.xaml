@@ -2,8 +2,10 @@
 <!--
     Playback. Primary task: watch. The video is the only permanent element; the
     timeline and transport fade in on pointer or keyboard activity and fade out after
-    the idle delay from Settings while playing. Secondary controls (speed, file
-    location) live in the More menu, not on the bar.
+    the idle delay from Settings while playing. Audio and subtitle choices share one
+    button; speed, picture shape, playback info and file location live in the More
+    menu, not on the bar. The video itself is a swap chain drawn by libmpv; everything
+    here is ordinary XAML composed above it.
 -->
 <UserControl
     x:Class="Aperture.App.Views.PlayerView"
@@ -60,6 +62,8 @@
                         <Setter Target="VolumeButton.Visibility" Value="Collapsed" />
                         <Setter Target="TimeText.Visibility" Value="Collapsed" />
                         <Setter Target="MoreButton.Visibility" Value="Collapsed" />
+                        <Setter Target="TracksButton.Visibility" Value="Collapsed" />
+                        <Setter Target="InfoPanel.Visibility" Value="Collapsed" />
                         <Setter Target="FullscreenButton.Visibility" Value="Collapsed" />
                         <Setter Target="ResumeNotice.Visibility" Value="Collapsed" />
                         <Setter Target="TopScrim.Height" Value="56" />
@@ -73,12 +77,11 @@
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
 
-        <MediaPlayerElement
+        <!-- libmpv letterboxes inside the panel itself, so the panel always fills the view. -->
+        <SwapChainPanel
             x:Name="Surface"
-            AreTransportControlsEnabled="False"
             AutomationProperties.Name="Video"
-            IsTabStop="False"
-            Stretch="Uniform" />
+            IsHitTestVisible="False" />
 
         <!-- Click toggles play; double-click toggles fullscreen. -->
         <Border
@@ -168,6 +171,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <Button
@@ -219,8 +223,39 @@
                         Style="{StaticResource VideoTimeTextStyle}" />
 
                     <Button
-                        x:Name="MoreButton"
+                        x:Name="TracksButton"
                         Grid.Column="5"
+                        AutomationProperties.AutomationId="TracksButton"
+                        AutomationProperties.Name="Audio and subtitles"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Audio and subtitles">
+                        <FontIcon Glyph="&#xE7F0;" Style="{StaticResource IconGlyphStyle}" />
+                        <Button.Flyout>
+                            <MenuFlyout
+                                x:Name="TracksMenu"
+                                Closed="OnFlyoutClosed"
+                                Opened="OnFlyoutOpened"
+                                Opening="OnTracksMenuOpening"
+                                Placement="TopEdgeAlignedRight">
+                                <MenuFlyoutSubItem x:Name="SubtitleMenu" Text="Subtitles" />
+                                <MenuFlyoutSubItem x:Name="AudioMenu" Text="Audio" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem
+                                    x:Name="AddSubtitleItem"
+                                    AutomationProperties.AutomationId="AddSubtitleItem"
+                                    Click="OnAddSubtitleClick"
+                                    Text="Add subtitle file…">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE8E5;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <Button
+                        x:Name="MoreButton"
+                        Grid.Column="6"
                         AutomationProperties.AutomationId="MoreButton"
                         AutomationProperties.Name="More options"
                         Style="{StaticResource VideoIconButtonStyle}"
@@ -236,13 +271,23 @@
                                     <MenuFlyoutSubItem.Icon>
                                         <FontIcon Glyph="&#xEC4A;" />
                                     </MenuFlyoutSubItem.Icon>
-                                    <RadioMenuFlyoutItem Click="OnSpeedClick" GroupName="Speed" Tag="0.5" Text="0.5×" />
-                                    <RadioMenuFlyoutItem Click="OnSpeedClick" GroupName="Speed" Tag="0.75" Text="0.75×" />
-                                    <RadioMenuFlyoutItem x:Name="NormalSpeedItem" Click="OnSpeedClick" GroupName="Speed" IsChecked="True" Tag="1" Text="Normal" />
-                                    <RadioMenuFlyoutItem Click="OnSpeedClick" GroupName="Speed" Tag="1.25" Text="1.25×" />
-                                    <RadioMenuFlyoutItem Click="OnSpeedClick" GroupName="Speed" Tag="1.5" Text="1.5×" />
-                                    <RadioMenuFlyoutItem Click="OnSpeedClick" GroupName="Speed" Tag="2" Text="2×" />
                                 </MenuFlyoutSubItem>
+                                <MenuFlyoutSubItem x:Name="AspectMenu" Text="Picture shape">
+                                    <MenuFlyoutSubItem.Icon>
+                                        <FontIcon Glyph="&#xE799;" />
+                                    </MenuFlyoutSubItem.Icon>
+                                </MenuFlyoutSubItem>
+                                <ToggleMenuFlyoutItem
+                                    x:Name="InfoMenuItem"
+                                    AutomationProperties.AutomationId="InfoMenuItem"
+                                    Click="OnInfoMenuClick"
+                                    KeyboardAcceleratorTextOverride="I"
+                                    Text="Playback info">
+                                    <ToggleMenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE946;" />
+                                    </ToggleMenuFlyoutItem.Icon>
+                                </ToggleMenuFlyoutItem>
+                                <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Click="OnShowInFolderClick" Text="Show in folder">
                                     <MenuFlyoutItem.Icon>
                                         <FontIcon Glyph="&#xE838;" />
@@ -254,7 +299,7 @@
 
                     <Button
                         x:Name="MiniPlayerButton"
-                        Grid.Column="6"
+                        Grid.Column="7"
                         AutomationProperties.AutomationId="MiniPlayerButton"
                         AutomationProperties.Name="Mini player"
                         Click="OnMiniPlayerClick"
@@ -268,7 +313,7 @@
 
                     <Button
                         x:Name="FullscreenButton"
-                        Grid.Column="7"
+                        Grid.Column="8"
                         AutomationProperties.AutomationId="FullscreenButton"
                         AutomationProperties.Name="Full screen"
                         Click="OnFullscreenClick"
@@ -282,6 +327,73 @@
                 </Grid>
             </Grid>
         </Grid>
+
+        <!-- ===== Playback info: stream and renderer details, toggled with I ===== -->
+        <Border
+            x:Name="InfoPanel"
+            Width="340"
+            Margin="24,64,24,0"
+            Padding="16,12,16,16"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            AutomationProperties.Name="Playback info"
+            Background="{ThemeResource VideoPanelBrush}"
+            CornerRadius="{StaticResource RadiusLarge}"
+            Visibility="Collapsed">
+            <Grid RowSpacing="4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        AutomationProperties.HeadingLevel="Level2"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyStrongTextStyle}"
+                        Text="Playback info" />
+                    <Button
+                        x:Name="InfoCloseButton"
+                        HorizontalAlignment="Right"
+                        AutomationProperties.AutomationId="InfoCloseButton"
+                        AutomationProperties.Name="Close playback info"
+                        Click="OnInfoCloseClick"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Close (I)">
+                        <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE711;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                </Grid>
+                <StackPanel
+                    x:Name="InfoSections"
+                    Grid.Row="1"
+                    AutomationProperties.AutomationId="InfoSections"
+                    Spacing="12" />
+            </Grid>
+        </Border>
+
+        <!-- ===== Brief confirmation of a keyboard change (speed, tracks, picture shape) ===== -->
+        <Border
+            x:Name="Toast"
+            Margin="24,72,24,0"
+            Padding="16,8,16,8"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Background="{ThemeResource VideoPanelBrush}"
+            CornerRadius="{StaticResource RadiusLarge}"
+            IsHitTestVisible="False"
+            Opacity="0">
+            <Border.OpacityTransition>
+                <ScalarTransition Duration="0:0:0.15" />
+            </Border.OpacityTransition>
+            <TextBlock
+                x:Name="ToastText"
+                MaxWidth="560"
+                AutomationProperties.AutomationId="ToastText"
+                AutomationProperties.LiveSetting="Polite"
+                Foreground="{ThemeResource TextOnVideoBrush}"
+                Style="{StaticResource BodyTextStyle}"
+                TextWrapping="WrapWholeWords" />
+        </Border>
 
         <!-- ===== Opening ===== -->
         <StackPanel

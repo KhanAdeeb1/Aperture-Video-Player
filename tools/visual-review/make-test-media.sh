@@ -33,7 +33,43 @@ clip "Studio Session 04"     6 0x1d1c1a 0x6b5a45 0xc9b28f 262
 clip "Field Notes, Kyoto"    4 0x3b1e1e 0xb5543c 0xe8c39e 294
 clip "First Light"           3 0x10233b 0x7a9cc6 0xf2d6a2 330
 
-# A real video whose codec (FFV1 in Matroska) Windows Media Foundation cannot decode.
+# Render check: amber top half, blue bottom half. The visual review samples both halves to
+# prove frames reach the screen the right way up.
+ffmpeg -hide_banner -loglevel error -y \
+  -f lavfi -i "color=c=0xE8A030:s=1280x720:r=24:d=20,drawbox=x=0:y=360:w=1280:h=360:color=0x2050C0:t=fill,format=yuv420p" \
+  -f lavfi -i "sine=frequency=440:sample_rate=48000:d=20" -af volume=0.03 \
+  -c:v libx264 -preset ultrafast -c:a aac "$out/Orientation Check.mp4"
+
+# Two audio languages and two subtitle tracks, for the audio and subtitles menu.
+cat > "$out/.night-market.srt" <<'SRT'
+1
+00:00:00,000 --> 00:01:00,000
+The stalls opened just after the rain stopped.
+SRT
+cat > "$out/.night-market-fr.srt" <<'SRT'
+1
+00:00:00,000 --> 00:01:00,000
+Les étals ouvrirent juste après la pluie.
+SRT
+ffmpeg -hide_banner -loglevel error -y \
+  -f lavfi -i "gradients=s=${size}:r=${rate}:c0=0x1a1423:c1=0xc2593f:c2=0x2b4c59:n=3:speed=0.004,format=yuv420p" \
+  -f lavfi -i "sine=frequency=220:sample_rate=48000" -f lavfi -i "sine=frequency=330:sample_rate=48000" \
+  -i "$out/.night-market.srt" -i "$out/.night-market-fr.srt" -t 60 \
+  -map 0 -map 1 -map 2 -map 3 -map 4 -af volume=0.03 \
+  -c:v libx264 -preset ultrafast -crf 27 -c:a aac -b:a 48k -c:s srt \
+  -metadata:s:a:0 language=eng -metadata:s:a:1 language=jpn -metadata:s:a:1 title="Commentary" \
+  -metadata:s:s:0 language=eng -metadata:s:s:1 language=fre \
+  "$out/Night Market.mkv"
+rm -f "$out/.night-market.srt" "$out/.night-market-fr.srt"
+# Loaded by hand through "Add subtitle file".
+printf '1\n00:00:00,000 --> 00:01:00,000\nLoaded from a separate file.\n' > "$out/Night Market (extra).srt"
+
+# Only a subtitle stream: a real Matroska file with nothing to play.
+printf '1\n00:00:00,000 --> 00:00:05,000\nNo picture here.\n' > "$out/.only.srt"
+ffmpeg -hide_banner -loglevel error -y -i "$out/.only.srt" -c:s srt "$out/Subtitles Only.mkv"
+rm -f "$out/.only.srt"
+
+# FFV1 in Matroska: Windows Media Foundation could not decode it (Milestone 1); libmpv can.
 ffmpeg -hide_banner -loglevel error -y -f lavfi -i "testsrc2=s=640x360:r=12" -t 10 -c:v ffv1 "$out/Archive Scan.mkv"
 # A file with a video extension but no video inside.
 head -c 400000 /dev/urandom > "$out/Damaged Copy.mp4"

@@ -34,6 +34,21 @@
   <ItemGroup>
     <ProjectReference Include="..\Aperture.Core\Aperture.Core.csproj" />
     <ProjectReference Include="..\Aperture.Data\Aperture.Data.csproj" />
+    <ProjectReference Include="..\Aperture.Playback.Mpv\Aperture.Playback.Mpv.csproj" />
+    <ProjectReference Include="..\Aperture.Video\Aperture.Video.csproj" />
+  </ItemGroup>
+
+  <!--
+    libmpv is not committed. tools/Get-Libmpv.ps1 downloads the build pinned in
+    third_party/libmpv.json (checking its SHA-256) the first time the app is built for a
+    platform, and the DLL is copied next to Aperture.exe.
+  -->
+  <Target Name="FetchLibmpv" BeforeTargets="BeforeBuild" Condition="'$(OS)' == 'Windows_NT' And '$(RuntimeIdentifier)' != ''">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\tools\Get-Libmpv.ps1&quot; -RuntimeIdentifier $(RuntimeIdentifier)" />
+  </Target>
+
+  <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <Content Include="..\..\third_party\bin\$(RuntimeIdentifier)\libmpv-2.dll" Link="libmpv-2.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

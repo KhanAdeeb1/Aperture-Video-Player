@@ -10,6 +10,11 @@
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
   </ItemGroup>
+  <ItemGroup Label="Video rendering (Windows)">
+    <PackageVersion Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageVersion Include="Vortice.DXGI" Version="3.8.3" />
+    <PackageVersion Include="Avalonia.Angle.Windows.Natives" Version="2.1.27548.20260419" />
+  </ItemGroup>
   <ItemGroup Label="Persistence">
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.13" />
   </ItemGroup>

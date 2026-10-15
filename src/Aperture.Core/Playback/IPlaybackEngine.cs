@@ -15,7 +15,7 @@ public enum PlaybackStatus
     /// <summary>Open and paused.</summary>
     Paused,
 
-    /// <summary>Played to the end.</summary>
+    /// <summary>Played to the end. The last frame stays on screen.</summary>
     Ended,
 
     /// <summary>The file could not be opened or playback broke; see <see cref="IPlaybackEngine.Failure"/>.</summary>
@@ -25,8 +25,7 @@ public enum PlaybackStatus
 /// <summary>
 /// The contract the interface uses to drive playback. Implementations raise every event
 /// on the thread that created them (the UI thread), so handlers can touch the UI directly.
-/// The Milestone 1 implementation uses Windows Media Foundation; libmpv replaces it later
-/// behind this same contract (see docs/architecture.md).
+/// The implementation is libmpv (<c>Aperture.Playback.Mpv</c>); see docs/architecture.md.
 /// </summary>
 public interface IPlaybackEngine : IDisposable
 {
@@ -48,15 +47,25 @@ public interface IPlaybackEngine : IDisposable
     /// <summary>Whether audio is muted.</summary>
     bool IsMuted { get; set; }
 
-    /// <summary>Playback speed, 1 being normal.</summary>
+    /// <summary>Playback speed, 1 being normal. Pitch is preserved.</summary>
     double Rate { get; set; }
+
+    /// <summary>How the picture is fitted to the window. Kept across files.</summary>
+    AspectMode Aspect { get; set; }
+
+    /// <summary>The open file's video, audio and subtitle tracks, in file order.</summary>
+    IReadOnlyList<MediaTrack> Tracks { get; }
 
     /// <summary>Raised whenever <see cref="Status"/> changes.</summary>
     event EventHandler? StatusChanged;
 
+    /// <summary>Raised when <see cref="Tracks"/> or the selected tracks change.</summary>
+    event EventHandler? TracksChanged;
+
     /// <summary>
-    /// Opens a file and starts playing it from <paramref name="startAt"/>. Failures are
-    /// reported through <see cref="Status"/> and <see cref="Failure"/>, not exceptions.
+    /// Opens a file and starts playing it from <paramref name="startAt"/>. Completes once the
+    /// file is playing or has failed. Failures are reported through <see cref="Status"/> and
+    /// <see cref="Failure"/>, not exceptions.
     /// </summary>
     Task OpenAsync(string path, TimeSpan startAt, CancellationToken cancellationToken = default);
 
@@ -71,4 +80,19 @@ public interface IPlaybackEngine : IDisposable
 
     /// <summary>Stops playback and releases the open file.</summary>
     void Close();
+
+    /// <summary>Plays the audio track with this id.</summary>
+    void SelectAudioTrack(long id);
+
+    /// <summary>Shows the subtitle track with this id, or hides subtitles when null.</summary>
+    void SelectSubtitleTrack(long? id);
+
+    /// <summary>
+    /// Loads a subtitle file for the open video and shows it. Returns null on success, or a
+    /// short reason when the file could not be loaded. The subtitle file is only read.
+    /// </summary>
+    Task<string?> AddSubtitleFileAsync(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>A snapshot of stream and playback details for the information panel.</summary>
+    PlaybackDiagnostics GetDiagnostics();
 }

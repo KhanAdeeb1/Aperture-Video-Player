@@ -26,6 +26,72 @@ jobs:
           dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj -c Release
           dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj -c Release
 
+  test-media:
+    name: Generate test media
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install FFmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Generate visual-review clips
+        run: tools/visual-review/make-test-media.sh "$RUNNER_TEMP/test-media"
+      - name: Generate engine test files
+        run: tools/test-media/make-engine-test-media.sh "$RUNNER_TEMP/engine-media"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-media
+          path: ${{ runner.temp }}/test-media
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-media
+          path: ${{ runner.temp }}/engine-media
+          include-hidden-files: true
+          retention-days: 3
+
+  engine-tests:
+    name: libmpv engine tests (${{ matrix.os }})
+    needs: test-media
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Install libmpv (Ubuntu package)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libmpv2
+      - name: Fetch the pinned libmpv (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: tools/Get-Libmpv.ps1 -RuntimeIdentifier win-x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: engine-media
+          path: ${{ runner.temp }}/engine-media
+      - name: Play every representative file through libmpv
+        shell: bash
+        env:
+          APERTURE_TEST_MEDIA: ${{ runner.temp }}/engine-media
+          APERTURE_TEST_RESULTS: ${{ runner.temp }}/engine-results.md
+        run: |
+          dotnet test tests/Aperture.Playback.Mpv.Tests/Aperture.Playback.Mpv.Tests.csproj -c Release --blame-hang-timeout 3m --logger "console;verbosity=normal"
+      - name: Publish measured results
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Representative files on ${{ matrix.os }}"
+            echo
+            echo "| File | Result | Details |"
+            echo "|---|---|---|"
+            sort -u "$RUNNER_TEMP/engine-results.md" 2>/dev/null || echo "| (no results) | | |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   windows-app:
     name: Build Windows app (${{ matrix.platform }})
     runs-on: windows-latest
@@ -38,8 +104,17 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Build WinUI app
+      - name: Build WinUI app (fetches the pinned libmpv)
         run: dotnet build src/Aperture.App/Aperture.App.csproj -c Release -p:Platform=${{ matrix.platform }}
+      - name: Check the native libraries are next to the app
+        shell: pwsh
+        run: |
+          $rid = if ('${{ matrix.platform }}' -eq 'x64') { 'win-x64' } else { 'win-arm64' }
+          $dir = "src/Aperture.App/bin/${{ matrix.platform }}/Release/net10.0-windows10.0.22621.0/$rid"
+          foreach ($dll in 'libmpv-2.dll', 'av_libglesv2.dll') {
+            if (-not (Test-Path (Join-Path $dir $dll))) { throw "$dll is missing from $dir" }
+            Write-Host "$dll present ($((Get-Item (Join-Path $dir $dll)).Length) bytes)"
+          }
       - name: Launch smoke test
         if: matrix.platform == 'x64'
         shell: pwsh
@@ -49,8 +124,8 @@ jobs:
           $p = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 15
           $p.Refresh()
+          $log = Join-Path $env:APERTURE_DATA_DIR "Logs/aperture.log"
           if ($p.HasExited) {
-            $log = Join-Path $env:APERTURE_DATA_DIR "Logs/aperture.log"
             if (Test-Path $log) { Get-Content $log }
             Get-WinEvent -LogName Application -MaxEvents 10 -ErrorAction SilentlyContinue |
               Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error' } |
@@ -60,50 +135,22 @@ jobs:
           if ($p.MainWindowHandle -eq 0) { Stop-Process -Id $p.Id -Force; throw "Aperture is running but has no main window" }
           Write-Host "Aperture started and opened its window: '$($p.MainWindowTitle)'"
           Stop-Process -Id $p.Id -Force
-
-  libmpv-discovery:
-    name: Discover libmpv builds (temporary)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Look up the newest libmpv release
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: tools/Get-Libmpv.ps1 -Discover
-
-  test-media:
-    name: Generate test media
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install FFmpeg
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
-      - name: Generate synthetic clips
-        run: tools/visual-review/make-test-media.sh "$RUNNER_TEMP/test-media"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: test-media
-          path: ${{ runner.temp }}/test-media
-          retention-days: 3
+          if (Test-Path $log) { Get-Content $log }
 
   visual-review:
     name: Visual review screenshots
     needs: test-media
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Prepare the runner (Media Foundation, 1920x1080 display)
+      - name: Set the display to 1920x1080
         shell: powershell
-        run: |
-          # Windows Server runners ship without the Media Foundation feature that
-          # Windows 11 has built in; the interim playback engine needs it.
-          $result = Install-WindowsFeature Server-Media-Foundation
-          if (-not $result.Success) { throw "Media Foundation could not be installed" }
-          Set-DisplayResolution -Width 1920 -Height 1080 -Force
+        run: Set-DisplayResolution -Width 1920 -Height 1080 -Force
       - name: Build WinUI app
         run: dotnet build src/Aperture.App/Aperture.App.csproj -c Release -p:Platform=x64
       - uses: actions/download-artifact@v4
@@ -117,6 +164,13 @@ jobs:
           -Exe src/Aperture.App/bin/x64/Release/net10.0-windows10.0.22621.0/win-x64/Aperture.exe
           -MediaDir "$env:RUNNER_TEMP/test-media"
           -OutDir "$env:RUNNER_TEMP/visual-review"
+      - name: Show notes and log
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Content "$env:RUNNER_TEMP/visual-review/notes.txt" -ErrorAction SilentlyContinue
+          Write-Host '--- aperture.log'
+          Get-Content "$env:RUNNER_TEMP/visual-review/aperture.log" -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -126,3 +180,32 @@ jobs:
             ${{ runner.temp }}/visual-review/*.txt
             ${{ runner.temp }}/visual-review/*.log
           retention-days: 14
+      # Reviewers without access to Actions artifacts read the screenshots from this branch.
+      # It holds one commit (replaced each run) of downscaled JPEGs and is never merged.
+      - name: Publish screenshots to the ci/visual-review branch
+        if: always() && github.event_name == 'push'
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $source = "$env:RUNNER_TEMP/visual-review"
+          $target = "$env:RUNNER_TEMP/visual-review-branch"
+          New-Item -ItemType Directory -Force $target | Out-Null
+          $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
+          $quality = New-Object System.Drawing.Imaging.EncoderParameters 1
+          $quality.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality), 82L
+          Get-ChildItem "$source/*.png" | ForEach-Object {
+            $image = [System.Drawing.Image]::FromFile($_.FullName)
+            $width = [Math]::Min(1280, $image.Width); $height = [int]($image.Height * $width / $image.Width)
+            $small = New-Object System.Drawing.Bitmap $image, $width, $height
+            $small.Save((Join-Path $target ($_.BaseName + '.jpg')), $codec, $quality)
+            $small.Dispose(); $image.Dispose()
+          }
+          Copy-Item "$source/notes.txt" $target -ErrorAction SilentlyContinue
+          Set-Content "$target/README.md" "Screenshots from CI run ${{ github.run_id }} of ${{ github.sha }} on ${{ github.ref_name }}. Replaced on every run; not for merging."
+          Set-Location $target
+          git init -q -b ci/visual-review
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Visual review screenshots for ${{ github.sha }}"
+          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/visual-review

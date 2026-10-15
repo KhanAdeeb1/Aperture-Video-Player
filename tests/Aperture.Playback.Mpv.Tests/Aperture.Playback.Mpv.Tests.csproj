@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Unit tests for the libmpv engine's parsing and formatting, plus integration tests that
+    play real files through libmpv. The integration tests need APERTURE_TEST_MEDIA (a folder
+    made by tools/test-media/make-engine-test-media.sh) and a loadable libmpv; without either
+    they are reported as skipped, never as passed.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Aperture.Playback.Mpv\Aperture.Playback.Mpv.csproj" />
+  </ItemGroup>
+
+  <!-- On Windows, the pinned libmpv fetched by tools/Get-Libmpv.ps1 is copied next to the tests. -->
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <None Include="..\..\third_party\bin\win-x64\libmpv-2.dll" Condition="Exists('..\..\third_party\bin\win-x64\libmpv-2.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>libmpv-2.dll</Link>
+    </None>
+  </ItemGroup>
+
+</Project>

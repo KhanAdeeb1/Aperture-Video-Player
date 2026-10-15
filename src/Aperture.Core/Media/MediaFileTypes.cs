@@ -12,8 +12,23 @@ public static class MediaFileTypes
         ".mp4", ".m4v", ".mkv", ".mov", ".webm", ".avi", ".wmv", ".ts", ".m2ts", ".mts", ".mpg", ".mpeg", ".3gp", ".ogv",
     };
 
+    private static readonly HashSet<string> SubtitleExtensionSet = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".srt", ".ass", ".ssa", ".vtt", ".sub", ".idx", ".sup", ".smi",
+    };
+
     /// <summary>Video extensions, lower case with a leading dot, in a stable order.</summary>
     public static IReadOnlyList<string> VideoExtensions { get; } = [.. VideoExtensionSet.Order(StringComparer.Ordinal)];
+
+    /// <summary>Subtitle file extensions Aperture can load next to a video, in a stable order.</summary>
+    public static IReadOnlyList<string> SubtitleExtensions { get; } = [.. SubtitleExtensionSet.Order(StringComparer.Ordinal)];
+
+    /// <summary>True when the path has a subtitle extension Aperture recognises.</summary>
+    public static bool IsSubtitleFile(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        return SubtitleExtensionSet.Contains(Path.GetExtension(path));
+    }
 
     /// <summary>True when the path has a video extension Aperture recognises.</summary>
     public static bool IsVideoFile(string path)

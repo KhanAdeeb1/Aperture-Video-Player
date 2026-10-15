@@ -100,7 +100,8 @@ public sealed partial class SettingsView
         {
             ServerSetupText.Text = string.Join("\n", status.SetupAddresses);
             CopySetupButton.Content = "Copy address";
-            ServerFingerprintText.Text = $"Certificate fingerprint (SHA-256): {status.CertificateFingerprint}";
+            ServerFingerprintCaption.Visibility = Visibility.Visible;
+            ServerFingerprintText.Text = SplitFingerprint(status.CertificateFingerprint);
         }
 
         PassphraseCaption.Text = hasPassphrase
@@ -425,5 +426,13 @@ public sealed partial class SettingsView
         PortsCaption.Text = _serverStatus is null
             ? "Saved. The server uses them when it starts."
             : "Saved. Stop and start the server to use them.";
+    }
+
+    /// <summary>"AA:BB:…" (32 bytes) as two lines of 16 bytes: it has no spaces, so it wouldn't otherwise wrap.</summary>
+    private static string SplitFingerprint(string fingerprint)
+    {
+        var bytes = fingerprint.Split(':');
+        var half = (bytes.Length + 1) / 2;
+        return bytes.Length < 2 ? fingerprint : string.Join(':', bytes[..half]) + ":\n" + string.Join(':', bytes[half..]);
     }
 }

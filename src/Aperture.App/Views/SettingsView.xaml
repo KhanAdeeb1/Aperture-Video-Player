@@ -663,7 +663,15 @@
                             IsTextSelectionEnabled="True"
                             Style="{StaticResource BodyTextStyle}" />
                         <TextBlock
+                            x:Name="ServerFingerprintCaption"
+                            Margin="0,6,0,0"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Certificate fingerprint (SHA-256), to compare with the one the phone shows:"
+                            Visibility="Collapsed" />
+                        <TextBlock
                             x:Name="ServerFingerprintText"
+                            AutomationProperties.Name="Certificate fingerprint"
+                            FontFamily="Cascadia Mono, Consolas"
                             IsTextSelectionEnabled="True"
                             Style="{StaticResource CaptionTextStyle}" />
                     </StackPanel>

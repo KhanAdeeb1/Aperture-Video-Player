@@ -53,7 +53,9 @@ The server tests start the real server on loopback with its own data folder and 
 
 By hand on Linux, with the server built from this branch: started in the background, `status`, `stop` and started again from the published self-contained build; a second copy refused to start; curl with the authority's certificate confirmed TLS and OpenSSL's enforcement of the name constraints. In headless Chromium at phone size (390×844): signed in, browsed, opened a show, played a VP9/Opus WebM directly (its time advanced) and the position was saved to history (23.9 s of 40 s); files Chromium can't play showed why. Chromium as shipped with Playwright has no H.264, AAC or HLS, which is why HLS and the continuous MP4 were checked with FFprobe and the tests above rather than watched in a browser.
 
-The app's C# was compile-checked on Linux against the Windows App SDK reference assemblies, with every XAML event handler checked. On Windows, CI builds x64 and ARM64 with the server bundled, runs every suite (FFmpeg installed, so the conversion tests run there too), checks the bundled server starts and stops, and runs the visual review; results are on the PR.
+The app's C# was compile-checked on Linux against the Windows App SDK reference assemblies, with every XAML event handler checked.
+
+On Windows (CI, Windows Server 2025, FFmpeg 9.0 from Chocolatey), every suite passed with nothing skipped: Core 357, Data 43, Media 56, YouTube 35 and Server 38, the conversion tests included. The x64 and ARM64 builds both bundle `Server\Aperture.Server.exe`, and the x64 build's copy started in the background, reported its status and stopped. The libmpv engine tests passed on Windows and Linux.
 
 ## 4. Visual review
 
@@ -70,7 +72,14 @@ Phone screenshots (Chromium at 390×844, from this branch):
 
 Tablet width: [tablet-09-home.jpg](milestone-7/tablet-09-home.jpg).
 
-The visual-review job's new Media server step drives the real Windows app: Settings › Media server before starting (`90-settings-media-server`), sharing the test library and setting the passphrase through the interface, Start, signing in over HTTPS as a phone would and listing the library, the device appearing in Settings (`91-settings-media-server-running`), closing Aperture and checking the server still answers, then Stop, Start and Stop again from Settings. Its outcome is recorded on the PR.
+The visual-review job's new Media server step drives the real Windows app: Settings › Media server before starting (`90-settings-media-server`), sharing the test library and setting the passphrase through the interface, Start, signing in over HTTPS as a phone would and listing the library, the device appearing in Settings (`91-settings-media-server-running`), closing Aperture and checking the server still answers, then Stop, Start and Stop again from Settings. Every check in it passed on Windows: the server signed in the test phone over HTTPS and listed the shared library, kept answering after Aperture closed, and stopped and started again from Settings; its log shows each start, the sign-in and each stop, and no passphrase, token or path.
+
+| | |
+|---|---|
+| ![Before starting](milestone-7/90-settings-media-server.jpg) | ![Running](milestone-7/91-settings-media-server-running.jpg) |
+| Settings › Media server before starting: Start is the accent button | Running: the address to open on a phone and the certificate fingerprint |
+
+The first Windows run showed the fingerprint cut off at the edge of its row, since it has no spaces to wrap at. It now has its own label and shows as two monospaced lines, so it can be compared with the phone in full; the screenshots above were taken before that fix.
 
 ## 5. Known limitations
 

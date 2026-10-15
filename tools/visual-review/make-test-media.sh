@@ -12,12 +12,16 @@ rate=12
 
 clip() { # name minutes c0 c1 c2 tone-hz
   local name="$1" minutes="$2" c0="$3" c1="$4" c2="$5" tone="$6"
+  local segment="$out/.segment.mp4"
+  # Render 30 s once, then repeat it without re-encoding to reach the full length.
   ffmpeg -hide_banner -loglevel error -y \
-    -f lavfi -i "gradients=s=${size}:r=${rate}:c0=${c0}:c1=${c1}:c2=${c2}:n=3:x0=480:y0=0:x1=480:y1=540:type=linear:speed=0.002,noise=alls=5:allf=t,format=yuv420p" \
+    -f lavfi -i "gradients=s=${size}:r=${rate}:c0=${c0}:c1=${c1}:c2=${c2}:n=3:x0=480:y0=0:x1=480:y1=540:type=linear:speed=0.004,format=yuv420p" \
     -f lavfi -i "sine=frequency=${tone}:sample_rate=48000" \
-    -t "$((minutes * 60))" -af volume=0.03 \
-    -c:v libx264 -preset ultrafast -crf 27 -g 120 -c:a aac -b:a 48k -movflags +faststart \
-    "$out/$name.mp4"
+    -t 30 -af volume=0.03 \
+    -c:v libx264 -preset ultrafast -crf 27 -g 120 -c:a aac -b:a 48k \
+    "$segment"
+  ffmpeg -hide_banner -loglevel error -y -stream_loop -1 -i "$segment" -t "$((minutes * 60))" -c copy -movflags +faststart "$out/$name.mp4"
+  rm -f "$segment"
   echo "made $name.mp4 (${minutes} min)"
 }
 

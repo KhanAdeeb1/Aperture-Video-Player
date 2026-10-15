@@ -42,6 +42,7 @@ public sealed class VideoPresenter : IDisposable
     private int _width;
     private int _height;
     private string _description = "Starting";
+    private bool _lightweight;
 
     private VideoPresenter(MpvPlaybackEngine engine, VideoRendererKind kind, bool flipY, Action<string, string> log)
     {
@@ -49,7 +50,7 @@ public sealed class VideoPresenter : IDisposable
         _kind = kind;
         _flipY = flipY;
         _log = log;
-        _thread = new Thread(Run) { IsBackground = true, Name = "Aperture video", Priority = ThreadPriority.AboveNormal };
+        _thread = new Thread(Run) { IsBackground = true, Name = "Aperture video" };
     }
 
     /// <summary>
@@ -199,7 +200,7 @@ public sealed class VideoPresenter : IDisposable
         }
 
         _frames ??= SoftwareFrameSource.Create(_engine, _immediate!, adapter, () => _wake.Set());
-        _description = _frames.Description;
+        _description = _lightweight ? $"{_frames.Description}, fast scaling (no GPU)" : _frames.Description;
         _log("info", $"Video surface ready: {_description}");
         SwapChainChanged?.Invoke(_swapChain!.NativePointer);
     }
@@ -220,6 +221,23 @@ public sealed class VideoPresenter : IDisposable
 
     private string CreateDevice()
     {
+        var (adapter, software) = CreateDeviceCore();
+
+        // With a real GPU the render thread does little CPU work, and running it above normal
+        // keeps frames on time. On WARP every draw is rasterised on the CPU, so the interface
+        // must win instead, and libmpv is told to use cheap scalers.
+        Thread.CurrentThread.Priority = software ? ThreadPriority.BelowNormal : ThreadPriority.AboveNormal;
+        _lightweight = software;
+        if (software)
+        {
+            _engine.UseLightweightScaling();
+        }
+
+        return adapter;
+    }
+
+    private (string Adapter, bool Software) CreateDeviceCore()
+    {
         var flags = DeviceCreationFlags.BgraSupport;
         var result = D3D11.D3D11CreateDevice(IntPtr.Zero, DriverType.Hardware, flags, FeatureLevels, out var device, out var immediate);
         if (result.Failure)
@@ -237,7 +255,13 @@ public sealed class VideoPresenter : IDisposable
 
         using var dxgiDevice = _device.QueryInterface<IDXGIDevice>();
         using var adapter = dxgiDevice.GetAdapter();
-        return adapter.Description.Description.TrimEnd('\0').Trim();
+        using var adapter1 = adapter.QueryInterfaceOrNull<IDXGIAdapter1>();
+        // WARP reports the software flag; the Microsoft Basic Render Driver (what Windows uses
+        // when no GPU driver is installed, as in most VMs) presents as hardware, so it is
+        // recognised by its vendor and device IDs.
+        var description1 = adapter1?.Description1;
+        var software = description1 is { } d && ((d.Flags & AdapterFlags.Software) != 0 || (d.VendorId == 0x1414 && d.DeviceId == 0x8C));
+        return (adapter.Description.Description.TrimEnd('\0').Trim(), software);
     }
 
     private void CreateSwapChain(int width, int height)

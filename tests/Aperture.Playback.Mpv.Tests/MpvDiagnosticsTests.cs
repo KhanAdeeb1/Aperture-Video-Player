@@ -45,7 +45,7 @@ public class MpvDiagnosticsTests
     public void Formats_video_values()
     {
         var diagnostics = Build(Playing);
-        Assert.Equal("HEVC (HEVC (High Efficiency Video Coding))", Value(diagnostics, "Video", "Codec"));
+        Assert.Equal("HEVC", Value(diagnostics, "Video", "Codec"));
         Assert.Equal("1920×1080", Value(diagnostics, "Video", "Resolution"));
         Assert.Equal("24 fps (measured 22.5)", Value(diagnostics, "Video", "Frame rate"));
         Assert.Equal("Software", Value(diagnostics, "Video", "Decoding"));

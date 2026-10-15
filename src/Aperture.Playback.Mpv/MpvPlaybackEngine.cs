@@ -71,6 +71,13 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
     /// <summary>Describes the video renderer for diagnostics; set by the surface that renders this engine.</summary>
     public Func<string?> RendererDescription { get; set; } = static () => null;
 
+    private static readonly (string Name, string Value)[] LightweightScaling =
+    [
+        ("scale", "bilinear"), ("cscale", "bilinear"), ("dscale", "bilinear"), ("dither-depth", "no"),
+        ("correct-downscaling", "no"), ("linear-downscaling", "no"), ("sigmoid-upscaling", "no"),
+        ("deband", "no"), ("hdr-compute-peak", "no"),
+    ];
+
     public PlaybackStatus Status
     {
         get
@@ -384,6 +391,19 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
         _loaded ? MpvDiagnostics.Build(_client.GetString, RendererDescription()) : PlaybackDiagnostics.Empty;
 
     /// <summary>
+    /// Switches libmpv's GPU renderer to its cheapest scalers. Used when the only Direct3D
+    /// device is the CPU rasteriser (WARP), where the default high-quality scalers take enough
+    /// CPU to starve the interface.
+    /// </summary>
+    public void UseLightweightScaling()
+    {
+        foreach (var (name, value) in LightweightScaling)
+        {
+            _client.SetProperty(name, value);
+        }
+    }
+
+    /// <summary>
     /// Raises subtitles by a fraction of the picture height (0 puts them back), so they stay
     /// clear of Aperture's controls while those are shown.
     /// </summary>
@@ -589,14 +609,15 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
 
         _log(message.LogLevel ?? "info", $"libmpv [{message.LogPrefix}] {text}");
 
-        // A decoder that cannot start does not end playback (the other stream keeps playing),
-        // so it is surfaced as a notice rather than a failure.
-        if (message.LogLevel is "error" or "fatal" && text.Contains("decoder", StringComparison.OrdinalIgnoreCase))
+        // A decoder or sound device that cannot start does not end playback (the other stream
+        // keeps playing), so it is surfaced as a notice rather than a failure.
+        if (message.LogLevel is "error" or "fatal")
         {
-            var notice = message.LogPrefix switch
+            var notice = (message.LogPrefix, text) switch
             {
-                "vd" => "Aperture can’t decode the picture in this file. The sound will still play.",
-                "ad" => "Aperture can’t decode the sound in this file. The picture will still play.",
+                ("vd", var t) when t.Contains("decoder", StringComparison.OrdinalIgnoreCase) => "Aperture can’t decode the picture in this file. The sound will still play.",
+                ("ad", var t) when t.Contains("decoder", StringComparison.OrdinalIgnoreCase) => "Aperture can’t decode the sound in this file. The picture will still play.",
+                ("cplayer", var t) when t.Contains("audio device", StringComparison.OrdinalIgnoreCase) => "No sound device is available, so this video is playing without sound.",
                 _ => null,
             };
             if (notice is not null)

@@ -205,6 +205,7 @@ public sealed partial class PlayerView : UserControl
         OpeningText.Text = Title;
         ResumeNotice.Visibility = Visibility.Collapsed;
         ResetSpeedMenu();
+        SetAspect(AspectMode.Original, announce: false);
         SetTimeline(TimeSpan.Zero, TimeSpan.Zero);
         UpdateTracksButton();
 
@@ -472,7 +473,7 @@ public sealed partial class PlayerView : UserControl
                 ErrorGlyph.Glyph = VideoGlyph;
                 VisualStateManager.GoToState(this, "NeutralTone", false);
                 ErrorTitle.Text = "There’s nothing here Aperture can play";
-                ErrorMessage.Text = $"“{fileName}” opened, but it has no picture or sound in a format Aperture can decode.";
+                ErrorMessage.Text = $"“{fileName}” opened, but Aperture found no picture or sound in it to play.";
                 ErrorDetail.Text = failure.Detail ?? string.Empty;
                 break;
             case PlaybackFailureKind.Damaged:

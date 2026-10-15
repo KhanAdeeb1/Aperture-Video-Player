@@ -224,6 +224,10 @@ Step 'Playback states' {
     $p = Start-Aperture (Media 'Harbour Lights.mp4')
     Save-Shot $p '05-opening'
     Start-Sleep -Seconds 3
+    # The pointer may already be at the centre from the previous step; move it so the
+    # window sees real pointer movement.
+    Move-MouseToCenter $p 60
+    Start-Sleep -Milliseconds 150
     Move-MouseToCenter $p
     Start-Sleep -Milliseconds 600
     Save-Shot $p '03-playback-controls-visible'
@@ -398,9 +402,13 @@ Step 'Tracks, subtitles, info, picture shape, speed' {
     Send-Keys $p 'i'
     Start-Sleep -Seconds 2
     Save-Shot $p '44-playback-info'
-    $info = Find-Element $p 'InfoSections'
-    $texts = $info.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name } | Where-Object { $_ }
-    Note "Playback info: $($texts -join ' | ')"
+    # The info rows are plain text blocks (layout panels are not in the automation tree), so
+    # read every text in the window from the panel's close button onwards.
+    Find-Element $p 'InfoCloseButton' | Out-Null
+    $texts = (Get-Root $p).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name } | Where-Object { $_ }
+    $start = [array]::IndexOf(@($texts), 'Close playback info')
+    if ($start -lt 0) { throw 'The playback info panel did not open' }
+    Note "Playback info: $(@($texts)[($start + 1)..(@($texts).Count - 1)] -join ' | ')"
     Send-Keys $p 'i'
     Send-Keys $p 'r'
     Start-Sleep -Milliseconds 800

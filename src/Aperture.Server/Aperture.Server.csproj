@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    Aperture's media server: a separate background process that lets phones and tablets on the
+    home network (or a private network the user set up) browse shared library folders and play
+    them in the browser. ASP.NET Core ships with .NET, so no package is added. Platform-neutral,
+    so its tests run on Linux and Windows CI. The desktop app starts and stops it but does not
+    host it; it keeps running when the app is closed.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Aperture.Server</RootNamespace>
+    <AssemblyName>Aperture.Server</AssemblyName>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64</RuntimeIdentifiers>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The server logs a few lines per sign-in or playback, so source-generated log methods (CA1848, CA1873) would add code without a measurable gain. -->
+    <NoWarn>$(NoWarn);CA1848;CA1873</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aperture.Core\Aperture.Core.csproj" />
+    <ProjectReference Include="..\Aperture.Data\Aperture.Data.csproj" />
+  </ItemGroup>
+
+  <!-- The web client is plain HTML, CSS and JavaScript, served from next to the server. -->
+  <ItemGroup>
+    <Content Update="wwwroot\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Aperture.Server.Tests" />
+  </ItemGroup>
+
+</Project>

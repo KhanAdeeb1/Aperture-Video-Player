@@ -118,6 +118,7 @@ public sealed partial class MainWindow : Window
             };
             SettingsPage.HistoryCleared += (_, _) => _thumbnails.Clear();
             SettingsPage.AddFolderRequested += async (_, _) => await AddLibraryFolderAsync();
+            SettingsPage.FfmpegPickRequested += async (_, _) => await PickFfmpegAsync();
             SettingsPage.YouTubeChanged += (_, _) => YouTubePage.ForgetCachedLists();
             SettingsPage.YouTubeDataCleared += async (_, _) => await YouTubePlayerPage.ClearBrowsingDataAsync();
             services.Library.Changed += (_, _) => DispatcherQueue.TryEnqueue(() =>
@@ -835,6 +836,33 @@ public sealed partial class MainWindow : Window
         if (result is not null && !string.IsNullOrEmpty(result.Path))
         {
             await OpenFileAsync(result.Path);
+        }
+    }
+
+    private async Task PickFfmpegAsync()
+    {
+        var picker = new FileOpenPicker(AppWindow.Id)
+        {
+            SuggestedStartLocation = PickerLocationId.ComputerFolder,
+            ViewMode = PickerViewMode.List,
+            CommitButtonText = "Use this FFmpeg",
+        };
+        picker.FileTypeFilter.Add(".exe");
+
+        PickFileResult? result;
+        try
+        {
+            result = await picker.PickSingleFileAsync();
+        }
+        catch (System.Runtime.InteropServices.COMException error)
+        {
+            AppLog.Error("The file picker failed to open", error);
+            return;
+        }
+
+        if (result is not null && !string.IsNullOrEmpty(result.Path))
+        {
+            await SettingsPage.SetFfmpegPathAsync(result.Path);
         }
     }
 

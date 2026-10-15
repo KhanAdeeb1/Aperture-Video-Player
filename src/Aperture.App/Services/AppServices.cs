@@ -2,6 +2,7 @@ using Aperture.App.Interop;
 using Aperture.Core.Input;
 using Aperture.Core.Library;
 using Aperture.Core.Series;
+using Aperture.Core.Server;
 using Aperture.Core.Settings;
 using Aperture.Core.Storage;
 using Aperture.Data;
@@ -39,7 +40,9 @@ internal sealed record AppServices(
     EpisodeAnalysisCoordinator Analysis,
     LiveSettings Settings,
     ShortcutMap InitialShortcuts,
-    YouTubeService YouTube)
+    YouTubeService YouTube,
+    IServerStore ServerStore,
+    MediaServerHost MediaServer)
 {
     /// <summary>The Credential Manager entry holding the user's TMDB key.</summary>
     public const string TmdbKeyName = "TMDB";
@@ -83,7 +86,7 @@ internal sealed record AppServices(
             var analysis = new EpisodeAnalysisCoordinator(series, () => CreateSignalReader(analysisFolder), new AnalysisCache(analysisFolder), TimeProvider.System, AppLog.FromEngine);
             var youTube = CreateYouTube(database, secrets);
             return new StartupResult(
-                new AppServices(location, history, settingsStore, settingsStore, itemState, secrets, library, series, new SeriesState(library), analysis, settings, shortcuts, youTube),
+                new AppServices(location, history, settingsStore, settingsStore, itemState, secrets, library, series, new SeriesState(library), analysis, settings, shortcuts, youTube, new SqliteServerStore(database), new MediaServerHost(location)),
                 null);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or Microsoft.Data.Sqlite.SqliteException)

@@ -40,6 +40,18 @@ public sealed class AppDataLocation
             Environment.GetEnvironmentVariable(OverrideVariable),
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
 
+    /// <summary>A data folder at an absolute path, for tests and tools that run several at once.</summary>
+    public static AppDataLocation At(string root)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        if (!Path.IsPathFullyQualified(root))
+        {
+            throw new ArgumentException("The data folder must be an absolute path.", nameof(root));
+        }
+
+        return new AppDataLocation(Path.GetFullPath(root));
+    }
+
     internal static AppDataLocation Resolve(string? overrideRoot, string localAppData)
     {
         if (!string.IsNullOrWhiteSpace(overrideRoot))

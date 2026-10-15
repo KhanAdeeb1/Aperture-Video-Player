@@ -598,6 +598,11 @@ Step 'Resume choice' {
 # ---------------------------------------------------------------------------------------
 $logFile = Join-Path $dataDir 'Logs\aperture.log'
 if (Test-Path $logFile) { Copy-Item $logFile (Join-Path $OutDir 'aperture.log') }
+# Any exception that reached Aperture's last-chance handler fails the review, even if the
+# step that caused it carried on.
+if ((Test-Path $logFile) -and (Select-String -Path $logFile -Pattern 'Unhandled exception' -SimpleMatch -Quiet)) {
+    $failures.Add('Aperture logged an unhandled exception (see aperture.log)')
+}
 $notes | Set-Content (Join-Path $OutDir 'notes.txt')
 if ($failures.Count -gt 0) {
     $failures | Set-Content (Join-Path $OutDir 'failures.txt')

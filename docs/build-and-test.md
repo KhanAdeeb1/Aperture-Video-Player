@@ -95,6 +95,8 @@ powershell -File tools/visual-review/Capture-States.ps1 -Exe <path-to-Aperture.e
 
 The visual review's YouTube step needs the network (GitHub's runners have it). It plays a public, embeddable video from a pasted link without an API key, saves it, checks the unavailable-video explanation, and screenshots the consent screen and Settings › YouTube. Search, liked videos and playlists need a key or a sign-in and are covered by unit tests against recorded API responses, not by CI.
 
+The visual review's casting step starts `tools/visual-review/fake-tv.py` (a stand-in DLNA TV, Python standard library only), opens a video, chooses More › Play on a TV, starts the media server from the panel, picks the TV, checks the remote reads "Playing on …" and "Paused on …", stops casting, and checks the stand-in TV really fetched the file over HTTP. It needs `python` on the path, as GitHub's Windows runners have.
+
 The visual review's media server step shares the test library, sets a passphrase and presses Start in Settings, signs in over HTTPS with `curl` the way a phone would and lists the library, checks the device appears in Settings, closes Aperture and checks the server still answers, then stops and restarts it from Settings.
 
 ## Data location
@@ -104,3 +106,19 @@ Aperture stores its own data (database, logs) in `%LOCALAPPDATA%\Aperture`. Set 
 ## Native dependencies
 
 libmpv is required at runtime and is never committed. `third_party/README.md` records the exact build, its hashes and license, and how to update the pin.
+
+## Casting to a real DLNA renderer (by hand)
+
+The automated tests use a fake renderer. To try a real one on Linux, install gmrender-resurrect and run it on a network interface with a private address (the media server only accepts TVs on home-network addresses, and some containers' interfaces aren't private):
+
+```bash
+sudo apt-get install gmediarender gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+# if no interface has a 192.168/10/172.16 address, make one (here an ifb device):
+sudo ip link add ifb0 type ifb; sudo ip link set ifb0 up multicast on
+sudo ip addr add 192.168.78.1/24 dev ifb0; sudo ip route add 239.0.0.0/8 dev ifb0
+gmediarender -I ifb0 -f "Test TV" -u 0a1b2c3d-1111-2222-3333-444455556666 --port 49494 \
+  --gstout-videosink fakevideosink --gstout-audiosink fakeaudiosink
+# a TV that accepts fewer formats, to see conversion: add --mime-filter "video/mpeg,video/mp4"
+```
+
+`fakevideosink`/`fakeaudiosink` play in real time without a screen (plain `fakesink` runs faster than real time). Then run the server as above and call its control address on 127.0.0.1:8080 with the `X-Aperture-Control` header set to the `controlToken` from `server.json`: `GET /control/cast/renderers?search=1`, `POST /control/cast/start` with `{"rendererId","path","title","startSeconds","durationSeconds"}`, `GET /control/cast/status`, `POST /control/cast/pause|play|stop`, `POST /control/cast/seek` with `{"seconds"}`. `tools/visual-review/fake-tv.py` can stand in for a TV the same way.

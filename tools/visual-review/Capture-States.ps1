@@ -1039,6 +1039,93 @@ Step 'Media server' {
     Stop-Aperture $p
 }
 
+# Play on a TV: a stand-in DLNA TV (fake-tv.py) answers on the network, Aperture finds it,
+# casts to it, and the TV really fetches the media from the media server.
+function Wait-CastHeading($p, [string] $prefix, [int] $seconds = 30) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        $heading = (Find-Element $p 'CastHeading').Current.Name
+        if ($heading.StartsWith($prefix)) { return $heading }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "the casting view never read '$prefix' (it reads '$heading')"
+}
+
+function Open-CastPicker($p) {
+    Move-MouseToCenter $p 40
+    Start-Sleep -Milliseconds 400
+    Invoke-Element (Find-Element $p 'MoreButton')
+    Start-Sleep -Milliseconds 800
+    Invoke-Element (Find-InApp $p 'CastMenuItem' 5)
+    Start-Sleep -Seconds 1
+}
+
+Step 'Casting' {
+    $tvLog = Join-Path $OutDir 'fake-tv.log'
+    Remove-Item $tvLog -ErrorAction SilentlyContinue
+    $tv = Start-Process -FilePath 'python' -ArgumentList "`"$PSScriptRoot\fake-tv.py`" --port 49500 --log `"$tvLog`"" -PassThru -WindowStyle Hidden
+    try {
+        Start-Sleep -Seconds 2
+        if ($tv.HasExited) { throw 'the stand-in TV did not start' }
+        $p = Start-Aperture (Media 'Harbour Lights.mp4')
+        Start-Sleep -Seconds 3
+        Send-Keys $p ' '   # paused, so the place cast from stays put
+        Start-Sleep -Milliseconds 500
+
+        # The media server is off (the last step stopped it): the picker says so and offers to start it.
+        Open-CastPicker $p
+        Note "Cast picker with the server off: $((Find-Element $p 'CastPickerStatus').Current.Name)"
+        Move-MouseAway
+        Save-Shot $p '95-cast-picker-server-off'
+        Invoke-Element (Find-Element $p 'CastStartServerButton')
+        $renderer = $null
+        $deadline = (Get-Date).AddSeconds(40)
+        while (-not $renderer -and (Get-Date) -lt $deadline) {
+            try { $renderer = Find-Element $p 'CastRenderer' 3 } catch { }
+            if (-not $renderer) {
+                try { $search = Find-Element $p 'CastSearchButton' 1; if ($search.Current.IsEnabled -and -not $search.Current.IsOffscreen) { Invoke-Element $search } } catch { }
+            }
+        }
+        if (-not $renderer) { throw "no TV was found (picker reads '$((Find-Element $p 'CastPickerStatus').Current.Name)')" }
+        Note "Cast picker lists: $($renderer.Current.Name)"
+        Move-MouseAway
+        Save-Shot $p '96-cast-picker'
+
+        Invoke-Element $renderer
+        $heading = Wait-CastHeading $p 'Playing on' 45
+        Note "Casting view: $heading; delivery: $((Find-Element $p 'CastDelivery').Current.Name)"
+        Start-Sleep -Seconds 3
+        Note "Casting position: $((Find-Element $p 'CastPositionText').Current.Name)"
+        Move-MouseAway
+        Save-Shot $p '97-casting'
+
+        Send-Keys $p ' '
+        Note "After Space: $(Wait-CastHeading $p 'Paused on' 15)"
+        Invoke-Element (Find-Element $p 'StopCastingButton')
+        $toast = ''
+        $deadline = (Get-Date).AddSeconds(15)
+        while (-not $toast.StartsWith('Stopped casting') -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 300
+            $toast = (Find-Element $p 'ToastText').Current.Name
+        }
+        if (-not $toast.StartsWith('Stopped casting')) { throw "stopping didn't say where it stopped (the notice reads '$toast')" }
+        Note "After Stop casting: $toast"
+        Move-MouseAway
+        Save-Shot $p '98-cast-stopped'
+
+        $log = Get-Content $tvLog -Raw
+        if ($log -notmatch 'fetched 20[06] ') { throw "the TV never fetched the media: $log" }
+        if ($log -notmatch 'Stop -> STOPPED') { throw "the TV was not told to stop: $log" }
+        Note 'Casting: the stand-in TV fetched the media, paused and stopped'
+        Stop-Aperture $p
+    }
+    finally {
+        if (-not $tv.HasExited) { Stop-Process -Id $tv.Id -Force -ErrorAction SilentlyContinue }
+        $server = Join-Path (Split-Path $Exe) 'Server\Aperture.Server.exe'
+        & $server stop | Out-Null
+    }
+}
+
 # ---------------------------------------------------------------------------------------
 $logFile = Join-Path $dataDir 'Logs\aperture.log'
 if (Test-Path $logFile) { Copy-Item $logFile (Join-Path $OutDir 'aperture.log') }

@@ -83,6 +83,9 @@ public sealed class ServerContext(
 
     public int SetupPort { get; internal set; }
 
+    /// <summary>Casting to TVs (set once the server has started).</summary>
+    public Casting.CastManager Casting { get; internal set; } = null!;
+
     /// <summary>True while the server asks Windows to stay awake.</summary>
     public Func<bool> KeepingAwake { get; internal set; } = () => false;
 

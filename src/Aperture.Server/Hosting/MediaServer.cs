@@ -73,6 +73,7 @@ public sealed class MediaServer : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await Context.Casting.DisposeAsync().ConfigureAwait(false);
         await _app.DisposeAsync().ConfigureAwait(false);
         await _conversions.DisposeAsync().ConfigureAwait(false);
         _keepAwake.Dispose();
@@ -165,6 +166,7 @@ public sealed class MediaServer : IAsyncDisposable
         context.RequestStop = lifetime.StopApplication;
         var keepAwake = new KeepAwake(activity, () => context.SettingsAsync(CancellationToken.None).GetAwaiter().GetResult().KeepAwake, loggers.CreateLogger<KeepAwake>());
         context.KeepingAwake = () => keepAwake.Active;
+        context.Casting = new Casting.CastManager(context, loggers.CreateLogger("Aperture.Casting"));
 
         Configure(app, context, log);
         try
@@ -173,6 +175,7 @@ public sealed class MediaServer : IAsyncDisposable
         }
         catch (IOException ex)
         {
+            await context.Casting.DisposeAsync().ConfigureAwait(false);
             await conversions.DisposeAsync().ConfigureAwait(false);
             keepAwake.Dispose();
             certificates.Dispose();

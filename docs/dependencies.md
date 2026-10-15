@@ -2,7 +2,9 @@
 
 Every dependency must appear here with its license and the reason it is needed before it is added to `Directory.Packages.props` or `third_party/`. "Checked" means the fact was looked up on the date shown; it is not legal advice.
 
-## In use (Milestones 2 to 7)
+## In use (Milestones 2 to 8)
+
+Milestone 8 added no packages. Playing on a TV uses SSDP and SOAP over .NET's own `UdpClient`, `HttpClient` and `System.Xml`; the TV is reached with the DLNA/UPnP AV standards, which need no licence or key to control a renderer. Conversion for TVs uses the same user-installed FFmpeg as the media server. CI's visual review starts a stand-in TV written in Python with only its standard library (Python is preinstalled on GitHub's Windows runners; nothing is shipped).
 
 Milestone 7 added no packages. The media server uses ASP.NET Core (Kestrel), which is part of .NET itself (the `Microsoft.AspNetCore.App` shared framework, MIT) and is published with the server; its certificates are made with .NET's own cryptography. FFmpeg is **not** shipped: the server uses an FFmpeg the user installs, only to repackage or convert files a device can't play directly, so FFmpeg's licence terms stay with the copy the user chose. Aperture runs it as a separate program and never links to it.
 
@@ -48,6 +50,8 @@ Milestones 3, 4 and 5 added no packages and no native libraries. Milestone 5 rea
 |---|---|---|
 | FFmpeg (Ubuntu package and Chocolatey package, CI only) | LGPL/GPL per build | Generates synthetic test clips (`tools/visual-review/make-test-media.sh`, `tools/test-media/make-engine-test-media.sh`) and runs the media server's conversion tests. Nothing it produces is committed or shipped |
 | libmpv2 (Ubuntu package, CI only) | GPLv2+ | Runs the engine tests on Linux |
+| Python 3 (preinstalled on Windows runners, CI only) | PSF | Runs `tools/visual-review/fake-tv.py`, the stand-in DLNA TV the visual review casts to (standard library only) |
+| gmrender-resurrect (`gmediarender`, Ubuntu package; used by hand, not in CI) | GPLv2+ | A real open-source DLNA renderer that casting was checked against; see build-and-test.md |
 | 7-Zip (preinstalled on Windows runners) or `tar` | LGPL / BSD | Extracts the pinned libmpv archive in `Get-Libmpv.ps1` |
 
 ## Rules

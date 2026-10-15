@@ -261,7 +261,8 @@ public sealed class EpisodeAnalysisCoordinator(
         var segments = await Task.Run(() => SegmentDetector.Detect(target, peers, previous, cancellationToken), cancellationToken).ConfigureAwait(false);
         var outcome = target.Audio is null ? AnalysisOutcome.NoAudio : AnalysisOutcome.Done;
         await store.SaveDetectedAsync(new AnalysisRecord(job.Fingerprint, SegmentDetector.Version, job.Signature, clock.GetUtcNow(), outcome), segments, cancellationToken).ConfigureAwait(false);
-        log("info", $"Analysed {Path.GetFileName(job.Target.Path)}: {(segments.Count == 0 ? "nothing found" : string.Join(", ", segments.Select(s => $"{s.Kind} {s.Start:hh\\:mm\\:ss}–{s.End:hh\\:mm\\:ss} ({s.Confidence:0.00})")))}");
+        var measured = $"sound {(target.Audio is null ? "none" : "read")}, {(target.Dark is { } dark ? $"{dark.Count} dark stretches" : "no picture")}, {target.Chapters.Count} chapters, compared with {peers.Count}";
+        log("info", $"Analysed {Path.GetFileName(job.Target.Path)} ({measured}): {(segments.Count == 0 ? "nothing found" : string.Join(", ", segments.Select(s => $"{s.Kind} {s.Start:hh\\:mm\\:ss}–{s.End:hh\\:mm\\:ss} ({s.Confidence:0.00})")))}");
         SegmentsChanged?.Invoke(this, job.Fingerprint);
     }
 

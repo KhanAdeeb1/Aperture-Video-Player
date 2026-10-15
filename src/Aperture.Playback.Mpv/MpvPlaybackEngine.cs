@@ -233,7 +233,7 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
             return;
         }
 
-        if (!MediaFileTypes.IsVideoFile(path))
+        if (!MediaFileTypes.IsPlayableFile(path))
         {
             Fail(new PlaybackFailure(PlaybackFailureKind.Unsupported, Path.GetExtension(path)));
             return;

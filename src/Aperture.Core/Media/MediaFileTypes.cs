@@ -12,6 +12,11 @@ public static class MediaFileTypes
         ".mp4", ".m4v", ".mkv", ".mov", ".webm", ".avi", ".wmv", ".ts", ".m2ts", ".mts", ".mpg", ".mpeg", ".3gp", ".ogv",
     };
 
+    private static readonly HashSet<string> AudioExtensionSet = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".m4a", ".m4b", ".aac", ".opus", ".ogg", ".oga", ".flac", ".wav", ".wma",
+    };
+
     private static readonly HashSet<string> SubtitleExtensionSet = new(StringComparer.OrdinalIgnoreCase)
     {
         ".srt", ".ass", ".ssa", ".vtt", ".sub", ".idx", ".sup", ".smi",
@@ -19,6 +24,12 @@ public static class MediaFileTypes
 
     /// <summary>Video extensions, lower case with a leading dot, in a stable order.</summary>
     public static IReadOnlyList<string> VideoExtensions { get; } = [.. VideoExtensionSet.Order(StringComparer.Ordinal)];
+
+    /// <summary>
+    /// Audio extensions, lower case with a leading dot. Aperture plays these for podcasts; the
+    /// open dialog still offers video files only.
+    /// </summary>
+    public static IReadOnlyList<string> AudioExtensions { get; } = [.. AudioExtensionSet.Order(StringComparer.Ordinal)];
 
     /// <summary>Subtitle file extensions Aperture can load next to a video, in a stable order.</summary>
     public static IReadOnlyList<string> SubtitleExtensions { get; } = [.. SubtitleExtensionSet.Order(StringComparer.Ordinal)];
@@ -36,6 +47,16 @@ public static class MediaFileTypes
         ArgumentNullException.ThrowIfNull(path);
         return VideoExtensionSet.Contains(Path.GetExtension(path));
     }
+
+    /// <summary>True when the path has an audio extension Aperture recognises.</summary>
+    public static bool IsAudioFile(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        return AudioExtensionSet.Contains(Path.GetExtension(path));
+    }
+
+    /// <summary>True for anything the player opens: video, or audio (podcasts).</summary>
+    public static bool IsPlayableFile(string path) => IsVideoFile(path) || IsAudioFile(path);
 
     /// <summary>The title shown for a file: its name without the extension.</summary>
     public static string TitleFromPath(string path)

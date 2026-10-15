@@ -33,6 +33,7 @@ public static class Win {
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hwnd, int x, int y, int w, int h, bool repaint);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int cmd);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out RECT rect, int size);
 }
 "@
@@ -144,7 +145,16 @@ function Save-Shot($p, [string] $name, [switch] $FullScreen) {
     Note "captured $name ($w x $h)"
 }
 
-function Move-Mouse([int] $x, [int] $y) { [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point $x, $y }
+# Moved as real mouse input (absolute, on the primary screen): setting the cursor position alone
+# moves the arrow but sends WinUI no pointer events, so hover and idle behaviour went untested.
+function Move-Mouse([int] $x, [int] $y) {
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $nx = [int][math]::Round($x * 65535 / ($screen.Width - 1))
+    $ny = [int][math]::Round($y * 65535 / ($screen.Height - 1))
+    [Win]::mouse_event(0x8001, $nx, $ny, 0, [UIntPtr]::Zero)  # MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE
+    Start-Sleep -Milliseconds 30
+    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point $x, $y
+}
 function Move-MouseToCenter($p, [int] $dx = 0) {
     $r = Get-WindowRect $p
     Move-Mouse ([int](($r.Left + $r.Right) / 2) + $dx) ([int](($r.Top + $r.Bottom) / 2))

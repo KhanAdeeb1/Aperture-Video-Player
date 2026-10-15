@@ -61,7 +61,8 @@ internal sealed class CardGrid
         // the same number of columns and each card fills its column to within a few pixels.
         var spacing = _layout.MinColumnSpacing;
         var columns = Math.Max(1, Math.Floor(width / (_minimum + spacing)));
-        var column = Math.Max(_minimum, Math.Floor((width / columns) - spacing));
+        // One pixel spare so rounding can never tip the layout into one column fewer.
+        var column = Math.Max(_minimum, Math.Floor((width / columns) - spacing) - 1);
         if (Math.Abs(column - _column) < 0.5)
         {
             return;

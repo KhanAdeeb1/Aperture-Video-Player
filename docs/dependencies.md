@@ -4,8 +4,7 @@ Every dependency must appear here with its license and the reason it is needed b
 
 ## In use (Milestones 2 to 6)
 
-Milestone 6 added no packages. YouTube playback uses WebView2 through the `WebView2` control that the Windows App SDK already includes (the WebView2 Runtime is part of Windows 11), the YouTube Data API and Google sign-in are reached with .NET's own `HttpClient` and `TcpListener`, and secrets go to the same Credential Manager store as the TMDB key. The new `Aperture.YouTube` project is Aperture's own code.
-
+claude/milestones-3-4-9ux5cr
 Milestones 3, 4 and 5 added no packages and no native libraries. Milestone 5 reads sound, dark pictures and chapters for intro and credits detection with the libmpv already in use (its `ao=pcm` sound output and its encoding mode for a tiny grey copy of the picture), and computes the audio fingerprint in Aperture's own code instead of adding Chromaprint. The engine test project now also references `Aperture.Media`, which is Aperture's own code. Library scanning reuses libmpv headless instead of adding FFprobe, the TMDB key is stored with Windows Credential Manager through four `advapi32` functions called directly (`CredReadW`, `CredWriteW`, `CredDeleteW`, `CredFree`), and TMDB is reached with .NET's own `HttpClient`.
 
 | Dependency | Version | License | Why | Notes |

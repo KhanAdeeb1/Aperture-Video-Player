@@ -612,6 +612,336 @@
                 </TextBlock>
             </StackPanel>
 
+            <!-- Media server -->
+            <TextBlock
+                x:Name="MediaServerHeader"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource SettingGroupHeaderTextStyle}"
+                Text="Media server" />
+            <StackPanel Spacing="2">
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Watch on your phone or tablet" />
+                        <TextBlock
+                            x:Name="ServerStatusCaption"
+                            AutomationProperties.AutomationId="ServerStatusCaption"
+                            AutomationProperties.LiveSetting="Polite"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Checking…" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="The server runs on its own, so it keeps going after you close Aperture until you stop it here." />
+                    </StackPanel>
+                    <Button
+                        x:Name="ServerStartButton"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="ServerStartButton"
+                        Click="OnServerStartStopClick"
+                        Content="Start"
+                        IsEnabled="False"
+                        Style="{StaticResource ApertureAccentButtonStyle}" />
+                </Grid>
+                <Grid
+                    x:Name="ServerConnectRow"
+                    Style="{StaticResource SettingRowStyle}"
+                    Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Connect a device" />
+                        <TextBlock Style="{StaticResource CaptionTextStyle}" Text="On the same Wi-Fi, open this address in the phone’s browser. It shows how to trust Aperture’s certificate, once, so the connection is encrypted." />
+                        <TextBlock
+                            x:Name="ServerSetupText"
+                            AutomationProperties.AutomationId="ServerSetupText"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource BodyTextStyle}" />
+                        <TextBlock
+                            x:Name="ServerFingerprintCaption"
+                            Margin="0,6,0,0"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Certificate fingerprint (SHA-256), to compare with the one the phone shows:"
+                            Visibility="Collapsed" />
+                        <TextBlock
+                            x:Name="ServerFingerprintText"
+                            AutomationProperties.Name="Certificate fingerprint"
+                            FontFamily="Cascadia Mono, Consolas"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                    <Button
+                        x:Name="CopySetupButton"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="CopySetupButton"
+                        Click="OnCopySetupClick"
+                        Content="Copy address"
+                        Style="{StaticResource ApertureButtonStyle}" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Passphrase" />
+                        <TextBlock
+                            x:Name="PassphraseCaption"
+                            AutomationProperties.AutomationId="PassphraseCaption"
+                            AutomationProperties.LiveSetting="Polite"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                    <Grid
+                        Grid.Row="1"
+                        Margin="0,12,0,0"
+                        ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <PasswordBox
+                            x:Name="PassphraseBox"
+                            AutomationProperties.AutomationId="PassphraseBox"
+                            AutomationProperties.Name="New passphrase"
+                            PasswordChanged="OnPassphraseChanged"
+                            PlaceholderText="New passphrase" />
+                        <PasswordBox
+                            x:Name="PassphraseAgainBox"
+                            Grid.Column="1"
+                            AutomationProperties.AutomationId="PassphraseAgainBox"
+                            AutomationProperties.Name="Type the passphrase again"
+                            PasswordChanged="OnPassphraseChanged"
+                            PlaceholderText="Type it again" />
+                        <Button
+                            x:Name="SavePassphraseButton"
+                            Grid.Column="2"
+                            AutomationProperties.AutomationId="SavePassphraseButton"
+                            Click="OnSavePassphraseClick"
+                            Content="Save"
+                            IsEnabled="False"
+                            Style="{StaticResource ApertureButtonStyle}" />
+                    </Grid>
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Shared folders" />
+                        <TextBlock
+                            x:Name="SharedFoldersCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Devices see only the library folders you turn on here. Nothing is shared until you choose, and files are only ever read." />
+                    </StackPanel>
+                </Grid>
+                <StackPanel x:Name="SharedFolderRows" Spacing="2" />
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Signed-in devices" />
+                        <TextBlock
+                            x:Name="DevicesCaption"
+                            AutomationProperties.AutomationId="DevicesCaption"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                    <Button
+                        x:Name="SignOutAllButton"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="SignOutAllButton"
+                        Content="Sign out all…"
+                        Style="{StaticResource ApertureButtonStyle}">
+                        <Button.Flyout>
+                            <Flyout x:Name="SignOutAllFlyout" Placement="BottomEdgeAlignedRight">
+                                <StackPanel MaxWidth="300" Spacing="12">
+                                    <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Sign out every device?" />
+                                    <TextBlock Style="{StaticResource BodyTextStyle}" Text="They stop playing straight away and need the passphrase to sign in again." />
+                                    <Button
+                                        HorizontalAlignment="Right"
+                                        AutomationProperties.AutomationId="ConfirmSignOutAllButton"
+                                        Click="OnConfirmSignOutAll"
+                                        Content="Sign out all"
+                                        Style="{StaticResource ApertureAccentButtonStyle}" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </Grid>
+                <StackPanel x:Name="DeviceRows" Spacing="2" />
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Keep the computer awake while a device plays" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Stops idle sleep only while something is playing. Closing a laptop’s lid or pressing the power button still sleeps; Aperture never changes your Windows power settings." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="KeepAwakeToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="KeepAwakeToggle"
+                        AutomationProperties.Name="Keep the computer awake while a device plays"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnServerSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Allow devices on a private network" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="For watching away from home through Tailscale or a similar private network you set up. The server never accepts connections from the internet itself." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="AllowVpnToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="AllowVpnToggle"
+                        AutomationProperties.Name="Allow devices on a private network"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnServerSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Start the server when I sign in to Windows" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="It starts in the background without opening Aperture." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="StartWithWindowsToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="StartWithWindowsToggle"
+                        AutomationProperties.Name="Start the server when I sign in to Windows"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnServerSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Converting for devices" />
+                        <TextBlock
+                            x:Name="ConverterCaption"
+                            AutomationProperties.AutomationId="ConverterCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Files a device can play are sent as they are. Others are converted on the fly with FFmpeg, which you install yourself; the original is never changed." />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="ConversionsBox"
+                        Grid.Column="1"
+                        MinWidth="160"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="ConversionsBox"
+                        AutomationProperties.Name="Conversions at once"
+                        SelectionChanged="OnServerSettingChanged" />
+                    <StackPanel
+                        Grid.Row="1"
+                        Grid.ColumnSpan="2"
+                        Margin="0,12,0,0"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                        <Button
+                            x:Name="ChooseFfmpegButton"
+                            AutomationProperties.AutomationId="ChooseFfmpegButton"
+                            Click="OnChooseFfmpegClick"
+                            Content="Choose ffmpeg.exe…"
+                            Style="{StaticResource ApertureButtonStyle}" />
+                        <Button
+                            x:Name="AutomaticFfmpegButton"
+                            AutomationProperties.AutomationId="AutomaticFfmpegButton"
+                            Click="OnAutomaticFfmpegClick"
+                            Content="Find it automatically"
+                            Style="{StaticResource ApertureButtonStyle}"
+                            Visibility="Collapsed" />
+                        <HyperlinkButton
+                            VerticalAlignment="Center"
+                            Content="Where to get FFmpeg"
+                            NavigateUri="https://github.com/KhanAdeeb1/Aperture-Video-Player/blob/HEAD/docs/media-server.md#ffmpeg" />
+                    </StackPanel>
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Ports" />
+                        <TextBlock
+                            x:Name="PortsCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Change these only if another program already uses them. They take effect the next time the server starts." />
+                    </StackPanel>
+                    <StackPanel
+                        Grid.Row="1"
+                        Margin="0,12,0,0"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                        <NumberBox
+                            x:Name="PortBox"
+                            MinWidth="140"
+                            AutomationProperties.AutomationId="PortBox"
+                            Header="Encrypted (HTTPS)"
+                            Maximum="65535"
+                            Minimum="1024"
+                            SpinButtonPlacementMode="Hidden"
+                            ValueChanged="OnPortChanged" />
+                        <NumberBox
+                            x:Name="SetupPortBox"
+                            MinWidth="140"
+                            AutomationProperties.AutomationId="SetupPortBox"
+                            Header="Setup page"
+                            Maximum="65535"
+                            Minimum="1024"
+                            SpinButtonPlacementMode="Hidden"
+                            ValueChanged="OnPortChanged" />
+                        <Button
+                            x:Name="SavePortsButton"
+                            VerticalAlignment="Bottom"
+                            AutomationProperties.AutomationId="SavePortsButton"
+                            Click="OnSavePortsClick"
+                            Content="Save"
+                            IsEnabled="False"
+                            Style="{StaticResource ApertureButtonStyle}" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock
+                    Margin="16,8,16,0"
+                    Style="{StaticResource CaptionTextStyle}"
+                    TextWrapping="Wrap">
+                    <Run Text="Laptops, Windows Firewall and watching away from home are covered in the" />
+                    <Hyperlink NavigateUri="https://github.com/KhanAdeeb1/Aperture-Video-Player/blob/HEAD/docs/media-server.md">media server guide</Hyperlink><Run Text="." />
+                </TextBlock>
+            </StackPanel>
+
             <!-- History -->
             <TextBlock
                 AutomationProperties.HeadingLevel="Level2"

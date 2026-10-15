@@ -58,4 +58,17 @@
     <Content Include="..\..\third_party\bin\$(RuntimeIdentifier)\libmpv-2.dll" Link="libmpv-2.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!--
+    The media server is a separate program (src/Aperture.Server) so it can keep running after
+    the app closes. It is published self-contained for the same platform into Server\ next to
+    Aperture.exe, where Settings › Media server starts it. See docs/media-server.md.
+  -->
+  <Target Name="PublishMediaServer" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT' And '$(RuntimeIdentifier)' != ''">
+    <Exec Command="dotnet publish &quot;$(MSBuildThisFileDirectory)..\Aperture.Server\Aperture.Server.csproj&quot; -c $(Configuration) -r $(RuntimeIdentifier) --self-contained -nologo -o &quot;$(OutDir)Server&quot;" />
+  </Target>
+
+  <Target Name="PublishMediaServerWithApp" AfterTargets="Publish" Condition="'$(OS)' == 'Windows_NT' And '$(RuntimeIdentifier)' != ''">
+    <Exec Command="dotnet publish &quot;$(MSBuildThisFileDirectory)..\Aperture.Server\Aperture.Server.csproj&quot; -c $(Configuration) -r $(RuntimeIdentifier) --self-contained -nologo -o &quot;$(PublishDir)Server&quot;" />
+  </Target>
+
 </Project>

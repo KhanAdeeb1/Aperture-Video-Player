@@ -2,7 +2,9 @@
 
 Every dependency must appear here with its license and the reason it is needed before it is added to `Directory.Packages.props` or `third_party/`. "Checked" means the fact was looked up on the date shown; it is not legal advice.
 
-## In use (Milestones 2 to 6)
+## In use (Milestones 2 to 7)
+
+Milestone 7 added no packages. The media server uses ASP.NET Core (Kestrel), which is part of .NET itself (the `Microsoft.AspNetCore.App` shared framework, MIT) and is published with the server; its certificates are made with .NET's own cryptography. FFmpeg is **not** shipped: the server uses an FFmpeg the user installs, only to repackage or convert files a device can't play directly, so FFmpeg's licence terms stay with the copy the user chose. Aperture runs it as a separate program and never links to it.
 
 claude/milestones-3-4-9ux5cr
 Milestones 3, 4 and 5 added no packages and no native libraries. Milestone 5 reads sound, dark pictures and chapters for intro and credits detection with the libmpv already in use (its `ao=pcm` sound output and its encoding mode for a tiny grey copy of the picture), and computes the audio fingerprint in Aperture's own code instead of adding Chromaprint. The engine test project now also references `Aperture.Media`, which is Aperture's own code. Library scanning reuses libmpv headless instead of adding FFprobe, the TMDB key is stored with Windows Credential Manager through four `advapi32` functions called directly (`CredReadW`, `CredWriteW`, `CredDeleteW`, `CredFree`), and TMDB is reached with .NET's own `HttpClient`.
@@ -25,7 +27,8 @@ Milestones 3, 4 and 5 added no packages and no native libraries. Milestone 5 rea
 | **libmpv** (`libmpv-2.dll`) | GPLv2+ by default; LGPLv2.1+ only when built without GPL-only files (`-Dgpl=false`). Verified in mpv's `Copyright` file on master, 2026-10-15 | Playback engine | M2 (in use) | The mpv project does not ship Windows binaries. Third-party builds (for example the `mpv-winbuild-cmake` builds) must be checked for which license they were built under and which FFmpeg configuration they include. **Decision needed from adi before release:** either accept GPL obligations for the whole app (Aperture's source would have to be distributed under GPL-compatible terms) or produce/obtain an LGPL build and dynamically link it, shipping license texts and offering corresponding source. Development can proceed with either; release cannot. |
 | FFmpeg (inside libmpv) | LGPL-2.1+ or GPL depending on build flags | Demuxing and decoding | M2 (in use, inside the pinned build) | Same as above. Also: shipping H.264/HEVC/AAC decoders can carry patent-licensing implications in some jurisdictions; needs a decision before public distribution |
 | libass, and other libmpv deps (HarfBuzz, FreeType, FriBidi, libplacebo…) | ISC / MIT / FreeType / LGPL (per library; to be enumerated from the chosen build) | Subtitles, shaping, rendering | M2 (inside the pinned build) | Enumerate from the exact build into `THIRD-PARTY-NOTICES.md` |
-| FFprobe | Same as FFmpeg build | Library scanning metadata | Not needed | Milestone 4 reads length, picture size and bitrate with a headless libmpv instance instead |
+| FFprobe | Same as FFmpeg build | Library scanning metadata | Not needed | Milestone 4 reads length, picture size and bitrate with a headless libmpv instance instead. The media server (M7) uses the user's own FFprobe, next to their FFmpeg, to choose how to stream a file |
+| FFmpeg, installed by the user (optional) | LGPL-2.1+ or GPL, per the build the user installs | Media server: repackaging and converting for devices that can't play the original | M7 | Not distributed with Aperture, so no redistribution obligation arises from it. Settings links to where to get it |
 | CommunityToolkit.Mvvm | MIT | Source-generated observable properties/commands, removes MVVM boilerplate | M2 | Only if ViewModels grow enough to justify it |
 | Microsoft.Extensions.DependencyInjection / Logging | MIT | Composition root and structured logging abstractions | M1–M2 | Logging sink: a small rolling file logger of our own vs. Serilog (Apache-2.0), decided in M4 |
 
@@ -42,7 +45,7 @@ Milestones 3, 4 and 5 added no packages and no native libraries. Milestone 5 rea
 
 | Tool | License | Why |
 |---|---|---|
-| FFmpeg (Ubuntu package, CI only) | LGPL/GPL per build | Generates synthetic test clips (`tools/visual-review/make-test-media.sh`, `tools/test-media/make-engine-test-media.sh`). Nothing it produces is committed or shipped |
+| FFmpeg (Ubuntu package and Chocolatey package, CI only) | LGPL/GPL per build | Generates synthetic test clips (`tools/visual-review/make-test-media.sh`, `tools/test-media/make-engine-test-media.sh`) and runs the media server's conversion tests. Nothing it produces is committed or shipped |
 | libmpv2 (Ubuntu package, CI only) | GPLv2+ | Runs the engine tests on Linux |
 | 7-Zip (preinstalled on Windows runners) or `tar` | LGPL / BSD | Extracts the pinned libmpv archive in `Get-Libmpv.ps1` |
 

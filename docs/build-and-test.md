@@ -19,6 +19,7 @@
 dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj
 dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj
 dotnet test tests/Aperture.Media.Tests/Aperture.Media.Tests.csproj
+dotnet test tests/Aperture.Server.Tests/Aperture.Server.Tests.csproj   # conversion tests need FFmpeg on PATH
 
 # Engine tests against real files (see "Engine tests" below)
 powershell -File tools/Get-Libmpv.ps1 -RuntimeIdentifier win-x64
@@ -35,7 +36,7 @@ In Visual Studio, open `Aperture.sln`, set `Aperture.App` as the startup project
 
 The app runs unpackaged and self-contained, so no separate Windows App SDK runtime install is required.
 
-Building the app runs `tools/Get-Libmpv.ps1` for the target platform, which downloads the pinned libmpv once, checks its SHA-256 and places `libmpv-2.dll` next to `Aperture.exe`. ANGLE (`av_libglesv2.dll`) comes from NuGet.
+Building the app also publishes the media server (`src/Aperture.Server`) self-contained into `Server\` next to `Aperture.exe`. Building the app runs `tools/Get-Libmpv.ps1` for the target platform, which downloads the pinned libmpv once, checks its SHA-256 and places `libmpv-2.dll` next to `Aperture.exe`. ANGLE (`av_libglesv2.dll`) comes from NuGet.
 
 Expected: the first-launch screen ("Open a video to begin"). Open a video with Ctrl+O, by dropping it on the window, or by passing its path: `Aperture.exe "D:\Videos\clip.mkv"`. Drop a subtitle file on a playing video to add it. If libmpv is missing, the player shows "Aperture's playback engine couldn't start" instead of crashing.
 
@@ -50,6 +51,13 @@ dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj
 dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj
 dotnet test tests/Aperture.Media.Tests/Aperture.Media.Tests.csproj
 dotnet test tests/Aperture.Playback.Mpv.Tests/Aperture.Playback.Mpv.Tests.csproj   # needs libmpv2
+dotnet test tests/Aperture.Server.Tests/Aperture.Server.Tests.csproj                 # conversion tests need ffmpeg
+```
+
+The media server itself runs on Linux too, which is how it is developed and tested from this repository's Linux environment (Windows is the supported platform):
+
+```bash
+APERTURE_DATA_DIR=/tmp/aperture-dev dotnet run --project src/Aperture.Server
 ```
 
 `Aperture.Video` also builds there (`EnableWindowsTargeting`), but cannot run. The app's C# can still be compile-checked on Linux by a scratch project that targets `net10.0-windows10.0.22621.0` with `EnableWindowsTargeting`, includes the app's `.cs` files and stands in for the XAML compiler's output with generated partial classes (one field per `x:Name` and an `InitializeComponent`). XAML markup itself is only checked by the Windows CI build. `dotnet build Aperture.sln` fails on non-Windows hosts because the WinUI XAML compiler (`XamlCompiler.exe`) is a Windows executable. This was confirmed in the Milestone 0 Linux environment.
@@ -72,10 +80,10 @@ Without `APERTURE_TEST_MEDIA`, or without libmpv, the file tests are reported as
 
 `.github/workflows/ci.yml` runs on every push and pull request:
 
-- **Core, data, library and YouTube tests** on `ubuntu-latest` and `windows-latest`.
+- **Core, data, library, YouTube and media server tests** on `ubuntu-latest` and `windows-latest`, with FFmpeg installed so the server's remux and conversion tests run (they are reported as skipped, never passed, where FFmpeg is missing). The server tests run the real server on loopback over HTTPS.
 - **Test media**: an Ubuntu job generates the visual-review clips and the engine test files with FFmpeg.
 - **libmpv engine tests** on Ubuntu (distribution `libmpv2`) and Windows (the pinned build). The measured results table is written to the job summary.
-- **Windows app build** for `x64` and `ARM64`, checking that `libmpv-2.dll` and `av_libglesv2.dll` are next to the app, with a launch smoke test on x64.
+- **Windows app build** for `x64` and `ARM64`, checking that `libmpv-2.dll` and `av_libglesv2.dll` are next to the app, with a launch smoke test on x64, and a check that the bundled media server starts in the background, answers `status` and stops.
 - **Visual review**: a Windows job sets the display to 1920×1080, builds the app and runs `tools/visual-review/Capture-States.ps1`, which drives the real app through every state with keyboard, mouse and UI Automation and saves a screenshot of each. It checks rendered pixels on an orientation clip (amber top, blue bottom) with the GPU (ANGLE on WARP) and software renderers, windowed and full screen. Screenshots, notes and the app log are uploaded as the `visual-review` artifact; on pushes, downscaled copies are also committed to the `ci/visual-review` branch so they can be viewed without downloading the artifact.
 
 To run the visual review locally on Windows (it uses a throwaway data folder, never your own):
@@ -86,6 +94,8 @@ powershell -File tools/visual-review/Capture-States.ps1 -Exe <path-to-Aperture.e
 ```
 
 The visual review's YouTube step needs the network (GitHub's runners have it). It plays a public, embeddable video from a pasted link without an API key, saves it, checks the unavailable-video explanation, and screenshots the consent screen and Settings › YouTube. Search, liked videos and playlists need a key or a sign-in and are covered by unit tests against recorded API responses, not by CI.
+
+The visual review's media server step shares the test library, sets a passphrase and presses Start in Settings, signs in over HTTPS with `curl` the way a phone would and lists the library, checks the device appears in Settings, closes Aperture and checks the server still answers, then stops and restarts it from Settings.
 
 ## Data location
 

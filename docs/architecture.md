@@ -24,7 +24,7 @@ Status: proposed in Milestone 0. Items marked **unverified** are design intentio
 │ event loop, engine │ │                    │ │                    │
 └────────────────────┘ └────────────────────┘ └────────────────────┘
 
-Later, separate process:  Aperture.Server (media server, remote streaming)
+Separate process:  Aperture.Server (media server for phones and tablets, §12)
 ```
 
 Rules that hold the shape together:
@@ -45,7 +45,7 @@ Rules that hold the shape together:
 | `Aperture.Data` | `net10.0` | `Microsoft.Data.Sqlite` connection management, versioned SQL migrations, settings and playback-history repositories | M1 (brought forward from M4) |
 | `Aperture.Media` | `net10.0` | Library scanning, the background library coordinator, optional TMDB lookup and the artwork cache (§8) | M4 |
 | `Aperture.YouTube` | `net10.0` | YouTube Data API v3 client, oEmbed lookup, Google sign-in (loopback, PKCE) and `YouTubeService`, which keeps Continue watching, Saved and the 30-day details rule (§11). Knows nothing about local playback | M6 |
-| `Aperture.Server` | separate executable | Background media server for remote/cross-device playback | After first release |
+| `Aperture.Server` | `net10.0`, separate executable | The media server: Kestrel on two ports, its own certificate authority, device sign-in, the shared-library API, direct play, FFmpeg remuxing and conversion, the phone web client (`wwwroot`), and a command line. References `Core` and `Data` only (§12) | M7 |
 
 Tests mirror the modules: `tests/Aperture.<Module>.Tests`. Tests that need the native libmpv library are integration tests and are reported as skipped, never as passed, when the library is absent.
 
@@ -227,3 +227,26 @@ YouTubeView (App) ─► YouTubeService ─► YouTubeDataApi (key, optional OAu
 - **Autoplay** for YouTube is a separate setting (`youtube.autoplay`) using the same `NextEpisodeCountdown` as episodes, but never the episode autoplay setting.
 
 Setup, quota and limits for users: [youtube.md](youtube.md).
+
+## 12. Media server (Milestone 7)
+
+```
+Phone browser ──HTTPS :8443──► Aperture.Server (separate process, keeps running when the app closes)
+     │                            ├─ network gate (NetworkAccess: loopback, home network; private network only if allowed)
+     └──HTTP :8080 (setup page,   ├─ DeviceAuth (passphrase → device token cookie) · LoginThrottle
+         certificate only)        ├─ ApiEndpoints ─► SharedLibrary ─► SqliteLibraryStore / SqlitePlaybackHistory
+                                  ├─ MediaEndpoints ─► direct file (Range) │ ConversionManager ─► FFmpeg (HLS or fMP4)
+Aperture.App ─ Settings ─────────►├─ SetupEndpoints /control/* (loopback + token from Server\server.json)
+   (MediaServerHost: start,       └─ CertificateAuthority (name-constrained, user cert store) · KeepAwake
+    stop, status; SqliteServerStore edits settings, folders, devices)
+```
+
+- **Separate lifecycles.** The app never hosts the server. `MediaServerHost` starts `Server\Aperture.Server.exe run --background` hidden and talks to it only through `server.json` (process id, ports, a per-start control token) and the loopback control address. The server holds `server.lock` so only one copy runs. Both processes share Aperture's SQLite database (WAL mode, each with its own connections); the server reads its settings with a 3-second cache, so changes in Settings apply without a restart (ports excepted). "Start with Windows" is an `HKCU\…\Run` entry that runs `Aperture.exe --media-server`, which starts the server and exits without a window.
+- **Core rules** (`Aperture.Core/Server`): `NetworkAccess` (address zones), `Passphrase` and `DeviceToken`, `SharedMedia` (what may be served) and `RemoteProgress` (what a device may record), `StreamPlanner` (direct play, remux, convert or unavailable, with the bitrate ladder), `ServerSettings`, `ServerStateFile` and `ServerControlClient`. All platform-neutral and unit-tested.
+- **Data**: migration 5 adds `server_shared_folders` (folder ids, removed with their folder) and `server_devices` (token hash, name, last seen, expiry, last address). Settings and the passphrase hash are `server.*` rows of `settings`.
+- **Streams.** Direct play serves the file with range requests at `/media/{token}/file.ext`; the token is random per device and item. Remux and convert run FFmpeg with arguments passed one by one (no shell) and the input as `file:` + path: HLS (EVENT playlist, 4 s MPEG-TS segments, written with `temp_file`) for clients with HLS, or one fragmented MP4 piped from FFmpeg's standard output for those without. Conversions live in `Server\Conversions\<id>` and are reaped when unused. The H.264 encoder is chosen by a real one-frame test encode (NVENC, Quick Sync, AMF, then x264).
+- **Progress sync.** The phone posts its position every 10 s, on pause and when the page is hidden. The server clamps it to the library's length and writes the same `playback_history` the desktop uses, unless the desktop's history setting is off.
+- **Logging.** `Logs\server.log`, with ASP.NET Core's own categories at Warning so request addresses (which hold tokens) aren't written.
+
+User guide, laptop behaviour and the security design: [media-server.md](media-server.md).
+

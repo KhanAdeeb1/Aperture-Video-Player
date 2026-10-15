@@ -931,9 +931,108 @@ Step 'YouTube' {
     Stop-Aperture $p
 }
 
+# The media server: turned on from Settings, reached over the network like a phone would,
+# and still running after Aperture closes, until it is stopped from Settings.
+function Get-ServerCode([string] $path) {
+    $code = & curl.exe -sk -o NUL -w '%{http_code}' --max-time 5 "https://127.0.0.1:8443/$path"
+    return "$code"
+}
+
+function Wait-ServerCaption($p, [string] $prefix, [int] $seconds = 30) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        $caption = (Find-Element $p 'ServerStatusCaption').Current.Name
+        if ($caption.StartsWith($prefix)) { return $caption }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "the media server status never read '$prefix' (it reads '$caption')"
+}
+
+function Show-ServerSettings($p) {
+    Send-Keys $p '^,'
+    Start-Sleep -Seconds 1
+    $button = Find-Element $p 'ServerStartButton'
+    $scroll = $null
+    if ($button.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref] $scroll)) { $scroll.ScrollIntoView() }
+    $button.SetFocus()
+    Start-Sleep -Seconds 1
+    if ($button.Current.IsOffscreen) { throw 'Settings did not scroll to the media server group' }
+    return $button
+}
+
+Step 'Media server' {
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    $button = Show-ServerSettings $p
+    $off = Wait-ServerCaption $p 'Off'
+    Note "Media server before starting: $off"
+    Move-MouseAway
+    Save-Shot $p '90-settings-media-server'
+
+    # Share the test library and set a passphrase, as a person would.
+    $share = Find-ByName $p 'Share Library' 10
+    if (-not $share) { throw 'the Library folder has no share switch' }
+    Invoke-Element $share
+    foreach ($id in 'PassphraseBox', 'PassphraseAgainBox') {
+        (Find-Element $p $id).SetFocus()
+        Start-Sleep -Milliseconds 300
+        [System.Windows.Forms.SendKeys]::SendWait('lantern river 42')
+    }
+    Invoke-Element (Find-Element $p 'SavePassphraseButton')
+    Start-Sleep -Seconds 1
+    Note "Passphrase: $((Find-Element $p 'PassphraseCaption').Current.Name)"
+
+    Invoke-Element $button
+    $on = Wait-ServerCaption $p 'On'
+    Note "Media server after Start: $on"
+    $setupCode = & curl.exe -s -o NUL -w '%{http_code}' --max-time 5 'http://127.0.0.1:8080/'
+    if ("$setupCode" -ne '200') { throw "the setup page answered $setupCode" }
+    if ((Get-ServerCode 'api/library') -ne '401') { throw 'the library answered without signing in' }
+
+    # Sign in over HTTPS like a phone. (TLS trust itself is covered by the server tests.)
+    $body = Join-Path $env:TEMP 'aperture-signin.json'
+    [System.IO.File]::WriteAllText($body, '{"passphrase":"lantern river 42","deviceName":"CI phone"}')
+    $jar = Join-Path $env:TEMP 'aperture-cookies.txt'
+    $signIn = & curl.exe -sk -o NUL -w '%{http_code}' --max-time 10 -c $jar -H 'X-Aperture: 1' -H 'Content-Type: application/json' --data-binary "@$body" 'https://127.0.0.1:8443/api/session'
+    if ("$signIn" -ne '200') { throw "signing in answered $signIn" }
+    $library = & curl.exe -sk --max-time 10 -b $jar 'https://127.0.0.1:8443/api/library'
+    if ("$library" -notmatch 'Night Shift') { throw "the shared library didn't list the test shows: $library" }
+    Note 'Media server: signed in over HTTPS and listed the shared library'
+    if (-not (Find-ByName $p 'Sign out CI phone' 15)) { throw 'the signed-in device did not appear in Settings' }
+    Start-Sleep -Seconds 1
+    Move-MouseAway
+    Save-Shot $p '91-settings-media-server-running'
+    $connect = Find-Element $p 'ServerSetupText'
+    Note "Connect a device shows: $($connect.Current.Name)"
+
+    # Closing Aperture leaves the server running.
+    Stop-Aperture $p
+    Start-Sleep -Seconds 2
+    if ((Get-ServerCode 'api/session') -ne '200') { throw 'the media server stopped when Aperture closed' }
+    Note 'Media server: still answering after Aperture closed'
+
+    # Stopping it from Settings, and starting it again.
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    $button = Show-ServerSettings $p
+    Wait-ServerCaption $p 'On' | Out-Null
+    Invoke-Element $button
+    Wait-ServerCaption $p 'Off' | Out-Null
+    if ((Get-ServerCode 'api/session') -ne '000') { throw 'the media server still answers after Stop' }
+    Invoke-Element $button
+    Wait-ServerCaption $p 'On' | Out-Null
+    if ((Get-ServerCode 'api/session') -ne '200') { throw 'the media server did not answer after starting again' }
+    Invoke-Element $button
+    Wait-ServerCaption $p 'Off' | Out-Null
+    Note 'Media server: stopped, started again and stopped from Settings'
+    Stop-Aperture $p
+}
+
 # ---------------------------------------------------------------------------------------
 $logFile = Join-Path $dataDir 'Logs\aperture.log'
 if (Test-Path $logFile) { Copy-Item $logFile (Join-Path $OutDir 'aperture.log') }
+$serverLog = Join-Path $dataDir 'Logs\server.log'
+if (Test-Path $serverLog) { Copy-Item $serverLog (Join-Path $OutDir 'server.log') }
 # Any exception that reached Aperture's last-chance handler fails the review, even if the
 # step that caused it carried on.
 if ((Test-Path $logFile) -and (Select-String -Path $logFile -Pattern 'Unhandled exception' -SimpleMatch -Quiet)) {

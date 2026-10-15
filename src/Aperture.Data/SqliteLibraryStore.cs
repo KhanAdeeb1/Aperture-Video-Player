@@ -219,6 +219,13 @@ public sealed class SqliteLibraryStore(ApertureDatabase database, TimeProvider? 
         return items.Count > 0 ? items[0] : null;
     }
 
+    /// <summary>One item by id, including a missing one, or null. Used by the media server, which names items by id only.</summary>
+    public async Task<LibraryItem?> FindByIdAsync(long id, CancellationToken cancellationToken = default)
+    {
+        var items = await ReadItemsAsync($"SELECT {ItemColumns} FROM library_items WHERE id = $id;", cancellationToken, ("$id", id)).ConfigureAwait(false);
+        return items.Count > 0 ? items[0] : null;
+    }
+
     public async Task<IReadOnlyList<LibraryItem>> GetUnmatchedAsync(int limit, CancellationToken cancellationToken = default) =>
         await ReadItemsAsync(
             $"SELECT {ItemColumns} FROM library_items WHERE missing = 0 AND looked_up_utc IS NULL AND source = 'FileName' AND category IN ('Movie', 'Episode') ORDER BY added_utc DESC LIMIT $limit;",

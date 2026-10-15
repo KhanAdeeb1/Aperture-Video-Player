@@ -103,6 +103,8 @@ public sealed partial class SettingsView : UserControl
         };
         services.Analysis.ProgressChanged += (_, progress) => DispatcherQueue.TryEnqueue(() => ShowAnalysisProgress(progress));
         _ = RefreshFoldersAsync();
+        services.Library.Changed += (_, _) => DispatcherQueue.TryEnqueue(async () => await RefreshServerAsync());
+        InitializeMediaServer();
     }
 
     private void ShowAnalysisProgress(Aperture.Media.Analysis.AnalysisProgress? progress) =>

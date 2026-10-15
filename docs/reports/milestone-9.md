@@ -126,7 +126,10 @@ What the new engine tests prove, with the real libmpv:
 
 The app's C# was compile-checked on Linux against the WinUI reference assemblies (no errors, no warnings). The XAML, the real window and every new state are checked by CI's Windows jobs: the build for x64 and ARM64, the launch smoke test, and the visual review.
 
-**Not yet executed:** the Windows build and visual review for this branch run in CI on the pull request. Their results will be added here, with the screenshots, once they have run.
+**Windows results (added in Milestone 10).** The Windows build for x64 and ARM64, the launch smoke test and the visual review passed in CI, last on run [38823513918](https://github.com/KhanAdeeb1/Aperture-Video-Player/actions/runs/38823513918) of the release branch. Two things were found and fixed in Milestone 10 on the way:
+
+- The visual review moved the pointer by setting the cursor position, which sends WinUI no pointer events, so the first seek-preview screenshots showed the controls hidden and no preview. It now moves the pointer with real mouse input.
+- With real pointer input, two genuine bugs showed up and were fixed: leaving a part of the timeline counted as leaving the window (the controls hid while the pointer rested on the timeline), and focus restored after closing a menu kept the controls up for good. See the [Milestone 10 report](milestone-10.md#1-implemented).
 
 ## 4. Visual review
 
@@ -148,6 +151,17 @@ The visual review adds two steps:
   - `106-settings-sound`
 - **Error panel.** On a damaged file it checks that Try again is offered, then presses Copy details. It checks that the clipboard holds a report with neither the media folder nor the file name in it. Screenshot: `107-error-retry-copy`.
 
+Screenshots, from the Windows CI run after the Milestone 10 fixes (`docs/reports/milestone-9/`):
+
+- [100](milestone-9/100-seek-preview.jpg): pointing at the timeline shows a picture of 5:20 with the time, and the controls stay up while the pointer rests there.
+- [101](milestone-9/101-bookmark-toast.jpg): "Bookmarked 12:26 · Shift+B shows bookmarks".
+- [102](milestone-9/102-bookmarks-panel.jpg): the bookmarks panel with one bookmark and its note field.
+- [103](milestone-9/103-loop-chip.jpg): the Lamp loop chip "Loop 12:29 – 12:32" and the band on the timeline.
+- [104](milestone-9/104-clear-dialogue-toast.jpg): "Clearer dialogue on".
+- [105](milestone-9/105-more-menu-advanced.jpg): the More menu with Bookmarks, Loop and Sound.
+- [106](milestone-9/106-settings-sound.jpg): Settings › Sound.
+- [107](milestone-9/107-error-retry-copy.jpg): a damaged file with Try again and Copy details for a bug report.
+
 ## 5. Known limitations
 
 - **Transcripts and online subtitle search are not built** and are waiting for your decisions (top of this report).
@@ -157,7 +171,7 @@ The visual review adds two steps:
 - **Even volume reacts to the next few seconds,** so the very start of a loud scene can still be loud for a moment.
 - **Clearer dialogue mixes surround to stereo.** On a real 5.1 speaker set-up, turning it on gives stereo.
 - **Recovery reopens a file once per opening.** A second failure shows the error. This is deliberate, so a broken drive can't loop forever.
-- **Not yet watched by a person** on Windows; see the top of this report.
+- **Not yet watched by a person** on Windows; CI's screenshots are the only check so far.
 
 ## 6. Regression check
 

@@ -7,9 +7,6 @@ name: Release
 on:
   push:
     tags: ['v*']
-    # TEMPORARY for Milestone 10: run the full soak once from the release branch, because
-    # workflow_dispatch only works once this file is on the default branch. Removed before merge.
-    branches: ['claude/milestone-10-release-kfgp3k']
   workflow_dispatch:
     inputs:
       minutes:

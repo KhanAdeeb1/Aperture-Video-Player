@@ -83,6 +83,50 @@ cp subs-en.srt "h264-aac-timedtext.en.srt"
 cp subs-fr.ass "extra-subtitles.ass"
 printf 'This is not a subtitle file.\n\x00\x01\x02' > "broken-subtitles.srt"
 
+# --- Three episodes of one show, for intro and credits detection -----------------------
+# Each: its own cold open (length differs), the same 20 s opening theme, its own story, then
+# the same 20 s end theme over a black picture. Sounds are seeded noise shaped by a rhythm, so
+# the theme is identical in every episode and everything else differs. Episode 2 carries chapters.
+episode() { # name cold-open-seconds story-seconds seed
+  local name=$1 cold=$2 story=$3 seed=$4
+  local beat="volume='0.35+0.3*sin(2*PI*1.7*t)*sin(2*PI*0.23*t)':eval=frame"
+  ff -f lavfi -i "testsrc2=s=640x360:r=25:d=$cold" -f lavfi -i "anoisesrc=d=$cold:c=pink:r=48000:a=0.4:seed=$((seed+1)),$beat" \
+     -f lavfi -i "smptehdbars=s=640x360:r=25:d=20" -f lavfi -i "anoisesrc=d=20:c=pink:r=48000:a=0.4:seed=900,$beat" \
+     -f lavfi -i "testsrc=s=640x360:r=25:d=$story" -f lavfi -i "anoisesrc=d=$story:c=pink:r=48000:a=0.4:seed=$((seed+2)),$beat" \
+     -f lavfi -i "color=black:s=640x360:r=25:d=20" -f lavfi -i "anoisesrc=d=20:c=brown:r=48000:a=0.4:seed=901,$beat" \
+     -filter_complex "[0:v][1:a][2:v][3:a][4:v][5:a][6:v][7:a]concat=n=4:v=1:a=1[v][a]" \
+     -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -b:a 128k "$name"
+}
+episode "Harbour.S01E01.mkv" 10 40 100
+episode "Harbour.S01E02.mkv" 3 47 200
+episode "Harbour.S01E03.mkv" 15 35 300
+cat > .chapters.txt <<'META'
+;FFMETADATA1
+[CHAPTER]
+TIMEBASE=1/1000
+START=0
+END=3000
+title=Cold open
+[CHAPTER]
+TIMEBASE=1/1000
+START=3000
+END=23000
+title=Opening
+[CHAPTER]
+TIMEBASE=1/1000
+START=23000
+END=70000
+title=Part A
+[CHAPTER]
+TIMEBASE=1/1000
+START=70000
+END=90000
+title=Ending
+META
+ff -i Harbour.S01E02.mkv -i .chapters.txt -map 0 -map_metadata 1 -map_chapters 1 -c copy .chaptered.mkv
+mv .chaptered.mkv Harbour.S01E02.mkv
+rm .chapters.txt
+
 # --- Files that should fail, each in its own way ----------------------------------------
 head -c 400000 /dev/urandom > damaged.mp4
 : > empty.mp4

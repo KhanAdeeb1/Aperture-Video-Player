@@ -39,11 +39,11 @@ Rules that hold the shape together:
 | Module | Target | Responsibility | Created in |
 |---|---|---|---|
 | `Aperture.App` | `net10.0-windows10.0.22621.0` | WinUI shell, screens, input, window management, video surface host | M0 (empty shell) |
-| `Aperture.Core` | `net10.0` | Domain records and rules (`HistoryEntry`, `WatchProgress`, `HomeShelves`, `AppSettings`, `TimeFormat`), contracts (`IPlaybackEngine`, `ISettingsStore`, `IPlaybackHistory`), `AppDataLocation` | M0, extended in M1 |
+| `Aperture.Core` | `net10.0` | Domain records and rules (`HistoryEntry`, `WatchProgress`, `HomeShelves`, `AppSettings`, `TimeFormat`), contracts (`IPlaybackEngine`, `ISettingsStore`, `IPlaybackHistory`, `ILibraryStore`, `IMediaProbe`, `ISecretStore`), the shortcut map (`Input/`), sync offsets and subtitle style, the file-name parser and copy grouping (`Library/`), `AppDataLocation` | M0, extended in M1 to M4 |
 | `Aperture.Playback.Mpv` | `net10.0` | Hand-written P/Invoke over the libmpv client and render APIs, a dedicated event thread, property observation, command dispatch, track list, diagnostics, failure mapping, disposal | M2 |
 | `Aperture.Video` | `net10.0-windows` | The Direct3D 11 video presenter: ANGLE frame source, software fallback, composition swap chain, render thread (§4.2) | M2 |
 | `Aperture.Data` | `net10.0` | `Microsoft.Data.Sqlite` connection management, versioned SQL migrations, settings and playback-history repositories | M1 (brought forward from M4) |
-| `Aperture.Media` | `net10.0` | Media inspection (libmpv track list during playback; FFprobe for library scanning), folder scanning, artwork | M6 |
+| `Aperture.Media` | `net10.0` | Library scanning, the background library coordinator, optional TMDB lookup and the artwork cache (§8) | M4 |
 | `Aperture.Server` | separate executable | Background media server for remote/cross-device playback | After first release |
 
 Tests mirror the modules: `tests/Aperture.<Module>.Tests`. Tests that need the native libmpv library are integration tests and are reported as skipped, never as passed, when the library is absent.
@@ -97,9 +97,7 @@ Tests mirror the modules: `tests/Aperture.<Module>.Tests`. Tests that need the n
 | `Windows.Media.Playback` (MediaPlayerElement) | Native WinUI control, simplest integration, no native redistribution | Codec coverage depends on installed Windows codecs (HEVC needs a Store extension, MKV/ASS subtitle support is limited); little control over rendering | Rejected for the core player |
 | Custom FFmpeg pipeline | Full control | Very large effort (A/V sync, subtitles, rendering) | Rejected |
 
-### 4.2 Rendering path (chosen in Milestone 2, approved by adi on 2026-10-15)
 
-WinUI 3 gives no per-control HWND, and libmpv's render API offers only OpenGL and software output. Two paths were credible (see the Milestone 0 audit). **Milestone 2 implements Path A over ANGLE**, and adi approved it on 2026-10-15 after the Milestone 2 report.
 
 ```
 libmpv render API (OpenGL ES 3)                     Aperture.Playback.Mpv / MpvRenderContext
@@ -135,7 +133,7 @@ The presenter's render thread owns the D3D11 device, ANGLE display and context, 
 
 ### 4.4 Media metadata
 
-During playback, libmpv already reports duration, chapters and the track list, so the player needs no separate probe. FFprobe is deferred to library scanning (M6), run as a separate process with a timeout so a malformed file cannot hang or crash the app. Whether FFprobe is needed at all, versus a headless libmpv instance, is decided in M6.
+During playback, libmpv already reports duration, chapters and the track list, so the player needs no separate probe. Library scanning (M4) uses a second, headless libmpv instance (`MpvMediaProbe`: `vo=null`, `ao=null`, paused, no subtitles) to read length, picture size and bitrate, with a per-file timeout. FFprobe is not needed, so there is no second native dependency. When libmpv cannot be loaded the scanner still indexes files by name and leaves length and quality blank.
 
 ### 4.5 Engine integration (Milestone 2)
 
@@ -147,7 +145,7 @@ During playback, libmpv already reports duration, chapters and the track list, s
 
 ## 5. Persistence
 
-SQLite through `Microsoft.Data.Sqlite`, one database at `AppDataLocation.DatabasePath` (`%LOCALAPPDATA%\Aperture\aperture.db`, overridable with `APERTURE_DATA_DIR`). Schema changes are numbered SQL migrations tracked with `PRAGMA user_version`, applied in a transaction at startup, with a backup copy taken before any migration runs. No ORM: the schema is small and plain SQL keeps it inspectable. Milestone 1 created `settings` (key/value) and `playback_history` (path, title, position, duration, last played); later `library_items`, `bookmarks`.
+SQLite through `Microsoft.Data.Sqlite`, one database at `AppDataLocation.DatabasePath` (`%LOCALAPPDATA%\Aperture\aperture.db`, overridable with `APERTURE_DATA_DIR`). Schema changes are numbered SQL migrations tracked with `PRAGMA user_version`, applied in a transaction at startup, with a backup copy taken before any migration runs. No ORM: the schema is small and plain SQL keeps it inspectable. Milestone 1 created `settings` (key/value) and `playback_history` (path, title, position, duration, last played). Migration 2 (Milestone 4) adds `library_folders` (path, kind, last scan), `library_items` (path, parsed and manual details, an optional suggestion, size, modified time, fingerprint, length, picture size, missing flag) and `item_state` (per-file watched override and remembered playback choices: tracks, delays, picture shape, speed). Manual details are stored in their own columns and never overwritten by a scan or a lookup. Later: `bookmarks`.
 
 ## 6. Design system foundation
 
@@ -156,3 +154,56 @@ See [design-system.md](design-system.md). Tokens are in `Theme/Tokens.xaml` (wit
 ## 7. Packaging (proposed)
 
 Development and the first release run **unpackaged and self-contained** (Windows App SDK runtime bundled), distributed as a signed zip or installer. MSIX packaging is evaluated before release for clean install/uninstall and file associations. This is a proposal, not a decision; it is confirmed in M5.
+
+## 8. Personal media library (Milestone 4)
+
+```
+Settings / Library screen ─► LibraryCoordinator (one background worker, cancellable)
+                                 │ per folder
+                                 ├─► LibraryScanner ─► MediaNameParser (Core) ─► ILibraryStore (SQLite)
+                                 │        └─► MpvMediaProbe (headless libmpv) + FileFingerprint
+                                 └─► LibraryLookup (only when the user turned it on and gave a key)
+                                          └─► TmdbMetadataProvider ─► ArtworkCache (Aperture's data folder)
+```
+
+- **Only folders the user picks.** Folders are added through the system folder picker. `LibraryFolderRules` refuses drive roots, the whole user profile, Windows and Program Files, app-data folders, Aperture's own data folder, and folders inside or containing one already added.
+- **Read-only.** The scanner opens files read-only and shared, reads 64 KB from each end for a fingerprint, skips hidden and system files, does not follow links out of the folder, skips cloud placeholders (reading them would download them), and ignores sample clips. Aperture never renames, moves, tags or deletes media; corrections live only in its database.
+- **Safe to cancel and repeat.** Files are written in batches of 250 per transaction. Unchanged files (same size and modified time) are skipped on the next scan. Items are only marked missing after a scan that saw the whole folder, and an unplugged drive keeps its items. Each path is stored once (a unique, case-insensitive key), so a repeated scan cannot create duplicates.
+- **Off the interface thread.** `LibraryCoordinator` runs one scan at a time on the thread pool, queues further requests, and raises progress, change and notice events that the app marshals with `DispatcherQueue`. The library screen refreshes at most once a second while a scan runs.
+- **Categories and uncertainty.** `MediaNameParser` reads the file and folder names (year, `S01E02`, `1x02`, dates, camera names, podcast folders) and returns a category, details and a confidence. Uncertain items show a "Check details" badge, and Edit details lets the user correct the kind, title, year, season and episode.
+- **Copies.** `CopyGroup.Build` groups items that are the same film or episode, or have the same fingerprint. The largest picture plays by default; the others are offered under "Play another copy".
+- **Optional online details.** Off by default. With the user's own TMDB key (stored in Windows Credential Manager, never in the database or logs), `LibraryLookup` searches TMDB for films and shows, one request at a time with 250 ms between them. A confident match fills in details and a poster; a doubtful one is stored as a suggestion the user can accept. Manual details always win. Offline, a rejected key, or a TMDB outage leave the library exactly as it was, and the library works the same with the feature off.
+
+## 9. Input and shortcuts (Milestone 3)
+
+- `ShortcutMap` (Core) maps key chords to `PlayerCommand`s, with defaults, per-command customisation, conflict detection and a list of keys that cannot be assigned (Windows keys such as Alt+Tab, Alt+F4, the Windows key, Shift+F10 and the menu key, plus Aperture's own Ctrl+O, Ctrl+F, Ctrl+L, Ctrl+comma, Alt+Left, Backspace, Esc, Tab and Enter). The map is saved as JSON in `settings`.
+- The window turns each key into a chord and asks the map for a command; the player executes it. Keys are ignored while a text box has focus, and while focus is inside the player's sync or shortcuts panels only Esc and the panel keys act, so typing and panel navigation never trigger playback commands.
+- Settings › Keyboard shortcuts edits the map; the player's shortcuts panel (F1 or ?) lists the current keys.
+
+## 10. Shows, intro and credits detection, and autoplay (Milestone 5)
+
+```
+Library (ILibraryStore) ─► SeriesCatalog.Build (Core) ─► SeriesState (App) ─► Home: Continue Watching
+                                    │
+                                    ├─► EpisodeAnalysisPlan ─► EpisodeAnalysisCoordinator (one background worker)
+                                    │                                │ per file, cached in AnalysisCache
+                                    │                                ├─► MpvSignalReader (headless libmpv: sound, dark picture, chapters)
+                                    │                                └─► SegmentDetector ─► ISeriesStore (SQLite, by fingerprint)
+                                    │
+Player ─► EpisodeCueTracker (Core) ◄── segments + the user's corrections + SeriesPreferences + AppSettings
+            └─► Skip button, automatic skip with undo, next-episode card and countdown
+```
+
+- **Shows and order.** `SeriesCatalog` groups library episodes by show (normalised title plus year, so two shows with the same name stay apart), orders them by season and episode with specials last, folds copies of the same episode into one `CopyGroup`, and understands files that hold several episodes (`S01E01E02`, `S01E01-02`, stored as `episode_end`). Next and previous follow this order and pick the copy from the same folder where there is one. The catalog is rebuilt from the database after every scan, so navigation is always computed from the current library, never from stored positions.
+- **Continue Watching.** `ContinueWatching.Build` takes the history, the catalog and watched overrides. For each show it keeps one card: the episode in progress, or "Up next" when the last one was finished. Films and other files keep their own cards.
+- **Watched.** An episode counts as watched when the user marks it, when it reaches confident credits, or when they move on from the credits or the end. Opening a watched episode starts from the beginning.
+- **Detection by measurement.** For each episode file, `MpvSignalReader` decodes the sound at 5512 Hz faster than real time (to a temporary file in Aperture's data folder, deleted afterwards), runs FFmpeg's `blackdetect` on a reduced picture over the last part of the file, and reads its chapters. `AudioPrint` turns the sound into a Haitsma–Kalker fingerprint (one 32-bit hash per 11.6 ms). `SegmentDetector` (version 1) then compares the file with up to four other episodes of the show, same season and nearest first:
+  - *Intro*: a stretch in the first 45 % (at most 12 minutes) whose sound recurs in other episodes. `PrintMatcher` tests every offset, so a cold open of any length is fine; nothing assumes the intro sits where another episode's did. Confidence grows with the number of episodes that agree: one 0.65, two 0.8, three or more 0.9. A chapter named "Opening" or "Intro" that measurement confirms is 0.95.
+  - *Credits*: in the last 45 % (at most 10 minutes), closing music shared with other episodes and/or a long, nearly dark picture. Both together are 0.95. When the credits end more than 15 s before the end of the file, the rest is treated as a scene after the credits: Skip Credits goes to it and the next-episode card waits for the real end.
+  - *Recap*: at least two short clips before the intro whose sound appears in the previous one or two episodes.
+- **What confidence allows.** `SegmentPolicy`: below 0.6 nothing is shown; from 0.6 a Skip button is offered; automatic skipping needs 0.85 (three agreeing episodes or a confirmed chapter) and is only done when the user chose "Automatic" for that segment kind, either in Settings or for the show. An automatic skip happens once, only when playback enters the segment at its start, and leaves a "Watch the intro" button for 5 s to undo it. A segment shorter than 3 s is ignored.
+- **Different releases.** Segments are stored by content fingerprint, so each release (and each cut) is analysed and corrected on its own; a correction to one release never moves another. A file is analysed again only when the detection method or the episodes it was compared with change (`episode_analysis.signature`).
+- **Background work.** `EpisodeAnalysisCoordinator` runs one file at a time on the thread pool. The episode being watched and the one after it go first. Measurements are cached per fingerprint (`AnalysisCache`, `Analysis\*.signals` in Aperture's data folder), so each file is decoded once. A file that cannot be read is recorded and not retried until the library changes. With "Find intros and credits" turned off, only the episode the user opens (and the next one) is analysed.
+- **Corrections.** The player's Intro and credits panel lets the user mark a start and end at the current position, confirm what was found, say there is none, or go back to what was found. Corrections are stored in `segment_corrections` by fingerprint, survive re-analysis and rescans, and always win over detection (a confirmed or corrected segment counts as certain).
+- **Autoplay.** `EpisodeCueTracker` decides when the next-episode card shows: at confident credits that run to the end, or at the end of the file. The countdown (5 to 30 s, default 10) runs only when autoplay is on for that show; pausing, Esc, Cancel or Close stops it for that episode, and after three episodes in a row played by autoplay alone it waits for the user. Per-show preferences (`series_preferences`) override the Settings defaults for autoplay, intros and recaps.
+- **Read-only.** Analysis only reads media files. Nothing is written next to them.

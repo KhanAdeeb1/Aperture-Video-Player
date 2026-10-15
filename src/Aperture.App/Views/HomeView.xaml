@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Home. Primary task: get back to a video. The most important element is the
-    Continue Watching row; everything else is quieter. With nothing played yet the
-    screen is a single, complete invitation to open a file.
+    Continue Watching row; library rows (newest first, one per kind) and Recently
+    Played sit below it, quieter. With nothing played and no library the screen is a
+    single, complete invitation to open a file or add a folder.
 -->
 <UserControl
     x:Class="Aperture.App.Views.HomeView"
@@ -50,6 +51,15 @@
                         <Setter Target="ShelvesStack.Margin" Value="{StaticResource PageGutterNarrow}" />
                         <Setter Target="ResultsStack.Margin" Value="{StaticResource PageGutterNarrow}" />
                         <Setter Target="ContinueRepeater.Margin" Value="24,0,24,0" />
+                        <Setter Target="ContinueHeader.Margin" Value="24,0,24,16" />
+                        <Setter Target="MoviesRepeater.Margin" Value="24,0,24,0" />
+                        <Setter Target="ShowsRepeater.Margin" Value="24,0,24,0" />
+                        <Setter Target="PersonalRepeater.Margin" Value="24,0,24,0" />
+                        <Setter Target="PodcastsRepeater.Margin" Value="24,0,24,0" />
+                        <Setter Target="MoviesHeaderRow.Margin" Value="24,40,24,16" />
+                        <Setter Target="ShowsHeaderRow.Margin" Value="24,40,24,16" />
+                        <Setter Target="PersonalHeaderRow.Margin" Value="24,40,24,16" />
+                        <Setter Target="PodcastsHeaderRow.Margin" Value="24,40,24,16" />
                     </VisualState.Setters>
                 </VisualState>
             </VisualStateGroup>
@@ -77,13 +87,165 @@
                         VerticalScrollMode="Disabled"
                         AutomationProperties.Name="Continue watching"
                         XYFocusKeyboardNavigation="Enabled">
-                        <ItemsRepeater x:Name="ContinueRepeater" Margin="40,0,40,0" ElementPrepared="OnContinueCardPrepared">
+                        <ItemsRepeater x:Name="ContinueRepeater" Margin="40,0,40,0" ElementPrepared="OnCardPrepared">
                             <ItemsRepeater.Layout>
                                 <StackLayout Orientation="Horizontal" Spacing="16" />
                             </ItemsRepeater.Layout>
                             <ItemsRepeater.ItemTemplate>
                                 <DataTemplate>
                                     <local:MediaCard Width="{StaticResource ArtworkLargeWidth}" />
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <StackPanel x:Name="MoviesSection" Visibility="Collapsed">
+                    <Grid x:Name="MoviesHeaderRow" Margin="40,40,40,16">
+                        <TextBlock
+                            x:Name="MoviesHeader"
+                            VerticalAlignment="Center"
+                            AutomationProperties.HeadingLevel="Level2"
+                            Style="{StaticResource SubtitleTextStyle}" />
+                        <Button
+                            x:Name="MoviesSeeAll"
+                            HorizontalAlignment="Right"
+                            AutomationProperties.AutomationId="MoviesSeeAll"
+                            Click="OnSeeAllClick"
+                            Style="{StaticResource QuietButtonStyle}"
+                            Tag="Movie">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="See all" />
+                                <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE76C;" Style="{StaticResource IconGlyphStyle}" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                    <ScrollViewer
+                        HorizontalScrollBarVisibility="Hidden"
+                        HorizontalScrollMode="Enabled"
+                        VerticalScrollMode="Disabled"
+                        XYFocusKeyboardNavigation="Enabled">
+                        <ItemsRepeater x:Name="MoviesRepeater" Margin="40,0,40,0" ElementPrepared="OnCardPrepared">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="16" />
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate>
+                                    <local:MediaCard Width="{StaticResource ArtworkSmallWidth}" />
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <StackPanel x:Name="ShowsSection" Visibility="Collapsed">
+                    <Grid x:Name="ShowsHeaderRow" Margin="40,40,40,16">
+                        <TextBlock
+                            x:Name="ShowsHeader"
+                            VerticalAlignment="Center"
+                            AutomationProperties.HeadingLevel="Level2"
+                            Style="{StaticResource SubtitleTextStyle}" />
+                        <Button
+                            x:Name="ShowsSeeAll"
+                            HorizontalAlignment="Right"
+                            AutomationProperties.AutomationId="ShowsSeeAll"
+                            Click="OnSeeAllClick"
+                            Style="{StaticResource QuietButtonStyle}"
+                            Tag="Episode">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="See all" />
+                                <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE76C;" Style="{StaticResource IconGlyphStyle}" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                    <ScrollViewer
+                        HorizontalScrollBarVisibility="Hidden"
+                        HorizontalScrollMode="Enabled"
+                        VerticalScrollMode="Disabled"
+                        XYFocusKeyboardNavigation="Enabled">
+                        <ItemsRepeater x:Name="ShowsRepeater" Margin="40,0,40,0" ElementPrepared="OnCardPrepared">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="16" />
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate>
+                                    <local:MediaCard Width="{StaticResource ArtworkSmallWidth}" />
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <StackPanel x:Name="PersonalSection" Visibility="Collapsed">
+                    <Grid x:Name="PersonalHeaderRow" Margin="40,40,40,16">
+                        <TextBlock
+                            x:Name="PersonalHeader"
+                            VerticalAlignment="Center"
+                            AutomationProperties.HeadingLevel="Level2"
+                            Style="{StaticResource SubtitleTextStyle}" />
+                        <Button
+                            x:Name="PersonalSeeAll"
+                            HorizontalAlignment="Right"
+                            AutomationProperties.AutomationId="PersonalSeeAll"
+                            Click="OnSeeAllClick"
+                            Style="{StaticResource QuietButtonStyle}"
+                            Tag="Personal">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="See all" />
+                                <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE76C;" Style="{StaticResource IconGlyphStyle}" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                    <ScrollViewer
+                        HorizontalScrollBarVisibility="Hidden"
+                        HorizontalScrollMode="Enabled"
+                        VerticalScrollMode="Disabled"
+                        XYFocusKeyboardNavigation="Enabled">
+                        <ItemsRepeater x:Name="PersonalRepeater" Margin="40,0,40,0" ElementPrepared="OnCardPrepared">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="16" />
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate>
+                                    <local:MediaCard Width="{StaticResource ArtworkSmallWidth}" />
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <StackPanel x:Name="PodcastsSection" Visibility="Collapsed">
+                    <Grid x:Name="PodcastsHeaderRow" Margin="40,40,40,16">
+                        <TextBlock
+                            x:Name="PodcastsHeader"
+                            VerticalAlignment="Center"
+                            AutomationProperties.HeadingLevel="Level2"
+                            Style="{StaticResource SubtitleTextStyle}" />
+                        <Button
+                            x:Name="PodcastsSeeAll"
+                            HorizontalAlignment="Right"
+                            AutomationProperties.AutomationId="PodcastsSeeAll"
+                            Click="OnSeeAllClick"
+                            Style="{StaticResource QuietButtonStyle}"
+                            Tag="Podcast">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="See all" />
+                                <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE76C;" Style="{StaticResource IconGlyphStyle}" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                    <ScrollViewer
+                        HorizontalScrollBarVisibility="Hidden"
+                        HorizontalScrollMode="Enabled"
+                        VerticalScrollMode="Disabled"
+                        XYFocusKeyboardNavigation="Enabled">
+                        <ItemsRepeater x:Name="PodcastsRepeater" Margin="40,0,40,0" ElementPrepared="OnCardPrepared">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="16" />
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate>
+                                    <local:MediaCard Width="{StaticResource ArtworkSmallWidth}" />
                                 </DataTemplate>
                             </ItemsRepeater.ItemTemplate>
                         </ItemsRepeater>
@@ -97,7 +259,7 @@
                         AutomationProperties.HeadingLevel="Level2"
                         Style="{StaticResource SubtitleTextStyle}"
                         Text="Recently played" />
-                    <ItemsRepeater x:Name="RecentRepeater" ElementPrepared="OnRecentCardPrepared">
+                    <ItemsRepeater x:Name="RecentRepeater" ElementPrepared="OnCardPrepared">
                         <ItemsRepeater.Layout>
                             <UniformGridLayout
                                 ItemsStretch="Fill"
@@ -128,7 +290,7 @@
                     AutomationProperties.HeadingLevel="Level2"
                     AutomationProperties.LiveSetting="Polite"
                     Style="{StaticResource SubtitleTextStyle}" />
-                <ItemsRepeater x:Name="ResultsRepeater" ElementPrepared="OnRecentCardPrepared">
+                <ItemsRepeater x:Name="ResultsRepeater" ElementPrepared="OnCardPrepared">
                     <ItemsRepeater.Layout>
                         <UniformGridLayout
                             ItemsStretch="Fill"
@@ -168,7 +330,7 @@
             <TextBlock
                 HorizontalTextAlignment="Center"
                 Style="{StaticResource BodyTextStyle}"
-                Text="Search looks through videos you have played. Folder libraries arrive in a later version." />
+                Text="Search looks through your library and the videos you have played, by title, episode, year and file name." />
         </StackPanel>
 
         <!-- ===== First launch / empty ===== -->
@@ -207,22 +369,39 @@
                     Margin="0,12,0,0"
                     HorizontalTextAlignment="Center"
                     Style="{StaticResource BodyTextStyle}"
-                    Text="Aperture keeps your place in everything you watch. The videos you play will appear here, ready to pick up where you left off." />
-                <Button
-                    x:Name="FirstLaunchOpenButton"
+                    Text="Aperture keeps your place in everything you watch. Open a single file, or add a folder of films, shows or home videos to build your library." />
+                <StackPanel
                     Margin="0,28,0,0"
                     HorizontalAlignment="Center"
-                    AutomationProperties.AutomationId="FirstLaunchOpenButton"
-                    Click="OnOpenClick"
-                    Style="{StaticResource ApertureAccentButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon
-                            FontFamily="{StaticResource FontIcons}"
-                            FontSize="{StaticResource IconMedium}"
-                            Glyph="&#xE8E5;" />
-                        <TextBlock Text="Open file" />
-                    </StackPanel>
-                </Button>
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Button
+                        x:Name="FirstLaunchOpenButton"
+                        AutomationProperties.AutomationId="FirstLaunchOpenButton"
+                        Click="OnOpenClick"
+                        Style="{StaticResource ApertureAccentButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon
+                                FontFamily="{StaticResource FontIcons}"
+                                FontSize="{StaticResource IconMedium}"
+                                Glyph="&#xE8E5;" />
+                            <TextBlock Text="Open file" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="FirstLaunchFolderButton"
+                        AutomationProperties.AutomationId="FirstLaunchFolderButton"
+                        Click="OnAddFolderClick"
+                        Style="{StaticResource ApertureButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon
+                                FontFamily="{StaticResource FontIcons}"
+                                FontSize="{StaticResource IconMedium}"
+                                Glyph="&#xE8F4;" />
+                            <TextBlock Text="Add a folder" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
                 <TextBlock
                     Margin="0,16,0,0"
                     HorizontalTextAlignment="Center"

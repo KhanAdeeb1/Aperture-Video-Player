@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    A played file: 16:9 artwork with its progress, title and one line of context.
-    Hover adds a hairline ring and lifts the title; keyboard focus uses the system
+    A played file or library item: 16:9 artwork with its progress, title and one line of
+    context. A check mark marks watched items; a quiet "Check details" tag marks guesses
+    the user should confirm. Hover adds a hairline ring; keyboard focus uses the system
     focus visual around the whole card. Right-click or Shift+F10 opens its actions.
 -->
 <UserControl
@@ -18,24 +19,8 @@
         PointerExited="OnPointerExited"
         Style="{StaticResource CardButtonStyle}">
         <Button.ContextFlyout>
-            <MenuFlyout>
-                <MenuFlyoutItem Click="OnInvoke" Text="Play">
-                    <MenuFlyoutItem.Icon>
-                        <FontIcon Glyph="&#xE768;" />
-                    </MenuFlyoutItem.Icon>
-                </MenuFlyoutItem>
-                <MenuFlyoutItem Click="OnShowInFolder" Text="Show in folder">
-                    <MenuFlyoutItem.Icon>
-                        <FontIcon Glyph="&#xE838;" />
-                    </MenuFlyoutItem.Icon>
-                </MenuFlyoutItem>
-                <MenuFlyoutSeparator />
-                <MenuFlyoutItem Click="OnRemove" Text="Remove from history">
-                    <MenuFlyoutItem.Icon>
-                        <FontIcon Glyph="&#xE711;" />
-                    </MenuFlyoutItem.Icon>
-                </MenuFlyoutItem>
-            </MenuFlyout>
+            <!-- Filled in when it opens, so it only offers what applies to this item. -->
+            <MenuFlyout x:Name="CardMenu" Opening="OnMenuOpening" />
         </Button.ContextFlyout>
 
         <VisualStateManager.VisualStateGroups>
@@ -87,6 +72,36 @@
                         Background="{ThemeResource AccentBrush}"
                         CornerRadius="2" />
                 </Grid>
+                <Border
+                    x:Name="CheckBadge"
+                    Margin="8"
+                    Padding="8,2,8,3"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource VideoPanelBrush}"
+                    CornerRadius="{StaticResource RadiusSmall}"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource CaptionTextStyle}"
+                        Text="Check details" />
+                </Border>
+                <Border
+                    x:Name="WatchedBadge"
+                    Width="24"
+                    Height="24"
+                    Margin="8"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource VideoPanelBrush}"
+                    CornerRadius="12"
+                    Visibility="Collapsed">
+                    <FontIcon
+                        FontSize="{StaticResource IconSmall}"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Glyph="&#xE73E;"
+                        Style="{StaticResource IconGlyphStyle}" />
+                </Border>
                 <Border
                     BorderBrush="{ThemeResource StrokeSubtleBrush}"
                     BorderThickness="1"

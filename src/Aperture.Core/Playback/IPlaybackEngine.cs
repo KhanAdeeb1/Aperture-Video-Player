@@ -47,8 +47,17 @@ public interface IPlaybackEngine : IDisposable
     /// <summary>Whether audio is muted.</summary>
     bool IsMuted { get; set; }
 
-    /// <summary>Playback speed, 1 being normal. Pitch is preserved.</summary>
+    /// <summary>Playback speed, 1 being normal.</summary>
     double Rate { get; set; }
+
+    /// <summary>Keep voices at their natural pitch when <see cref="Rate"/> is not 1.</summary>
+    bool PreservePitch { get; set; }
+
+    /// <summary>Subtitle timing offset; positive shows subtitles later. Applies to the open file.</summary>
+    TimeSpan SubtitleDelay { get; set; }
+
+    /// <summary>Sound timing offset; positive plays sound later. Applies to the open file.</summary>
+    TimeSpan AudioDelay { get; set; }
 
     /// <summary>How the picture is fitted to the window. Kept across files.</summary>
     AspectMode Aspect { get; set; }
@@ -92,6 +101,12 @@ public interface IPlaybackEngine : IDisposable
     /// short reason when the file could not be loaded. The subtitle file is only read.
     /// </summary>
     Task<string?> AddSubtitleFileAsync(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>Applies subtitle size, colour and background. Kept across files.</summary>
+    void ApplySubtitleStyle(SubtitleStyle style);
+
+    /// <summary>Pauses and shows the next (or previous) frame.</summary>
+    void StepFrame(bool forward);
 
     /// <summary>A snapshot of stream and playback details for the information panel.</summary>
     PlaybackDiagnostics GetDiagnostics();

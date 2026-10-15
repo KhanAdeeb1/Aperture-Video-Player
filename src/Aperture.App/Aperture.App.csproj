@@ -34,6 +34,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Aperture.Core\Aperture.Core.csproj" />
     <ProjectReference Include="..\Aperture.Data\Aperture.Data.csproj" />
+    <ProjectReference Include="..\Aperture.Media\Aperture.Media.csproj" />
     <ProjectReference Include="..\Aperture.Playback.Mpv\Aperture.Playback.Mpv.csproj" />
     <ProjectReference Include="..\Aperture.Video\Aperture.Video.csproj" />
   </ItemGroup>

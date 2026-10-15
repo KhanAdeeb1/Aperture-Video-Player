@@ -65,6 +65,8 @@ internal static class MpvDiagnostics
         var playback = new List<DiagnosticItem>();
         Add(playback, "Speed", Number(read("speed")) is { } speed ? PlaybackSpeed.Label(speed) : null);
         Add(playback, "A/V sync", Number(read("avsync")) is { } sync ? Invariant($"{sync * 1000:+0;-0;0} ms") : null);
+        Add(playback, "Sound offset", Number(read("audio-delay")) is { } audioDelay && Math.Abs(audioDelay) >= 0.001 ? SyncOffset.Label(TimeSpan.FromSeconds(audioDelay)) : null);
+        Add(playback, "Subtitle offset", Number(read("sub-delay")) is { } subDelay && Math.Abs(subDelay) >= 0.001 ? SyncOffset.Label(TimeSpan.FromSeconds(subDelay)) : null);
         Add(playback, "Buffered ahead", Seconds(read("demuxer-cache-duration"), t => Invariant($"{t.TotalSeconds:0.0} s")));
         Add(playback, "Renderer", renderer);
         Add(playback, "Engine", read("mpv-version"));

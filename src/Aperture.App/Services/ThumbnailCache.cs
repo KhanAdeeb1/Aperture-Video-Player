@@ -6,18 +6,20 @@ using Windows.Storage.FileProperties;
 namespace Aperture.App.Services;
 
 /// <summary>
-/// Artwork for played files, taken from the Windows thumbnail cache (a frame Windows
-/// extracts from the video). Nothing is written next to the user's media. Files without a
-/// real thumbnail return null and the card shows its designed empty artwork instead.
+/// Artwork for cards: a library item's downloaded artwork when there is one, otherwise the
+/// Windows thumbnail (a frame Windows extracts from the video). Nothing is written next to
+/// the user's media. Files without either return null and the card shows its designed
+/// empty artwork instead, so missing artwork never changes the layout.
 /// </summary>
 internal sealed class ThumbnailCache
 {
     private const uint RequestedSize = 640;
     private readonly Dictionary<string, ImageSource?> _cache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<ImageSource?> GetAsync(string path)
+    public async Task<ImageSource?> GetAsync(string path, string? artworkPath = null)
     {
-        if (_cache.TryGetValue(path, out var cached))
+        var key = artworkPath ?? path;
+        if (_cache.TryGetValue(key, out var cached))
         {
             return cached;
         }
@@ -25,7 +27,15 @@ internal sealed class ThumbnailCache
         ImageSource? image = null;
         try
         {
-            if (File.Exists(path))
+            if (artworkPath is not null && File.Exists(artworkPath))
+            {
+                var file = await StorageFile.GetFileFromPathAsync(artworkPath);
+                using var stream = await file.OpenReadAsync();
+                var bitmap = new BitmapImage { DecodePixelWidth = (int)RequestedSize };
+                await bitmap.SetSourceAsync(stream);
+                image = bitmap;
+            }
+            else if (File.Exists(path))
             {
                 var file = await StorageFile.GetFileFromPathAsync(path);
                 using var thumbnail = await file.GetThumbnailAsync(ThumbnailMode.VideosView, RequestedSize, ThumbnailOptions.ResizeThumbnail);
@@ -42,7 +52,7 @@ internal sealed class ThumbnailCache
             AppLog.Warning("Could not load a thumbnail", error);
         }
 
-        _cache[path] = image;
+        _cache[key] = image;
         return image;
     }
 

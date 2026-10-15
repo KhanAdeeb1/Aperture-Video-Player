@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The library's background work: walking library folders, fingerprinting files, and the
+    optional online lookup of artwork and details. Platform-neutral and free of UI, so its
+    tests run on Linux and Windows CI. Media files are only ever read.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Aperture.Media</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aperture.Core\Aperture.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Aperture.Media.Tests" />
+  </ItemGroup>
+
+</Project>

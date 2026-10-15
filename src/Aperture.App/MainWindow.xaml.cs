@@ -1,7 +1,11 @@
 using Aperture.App.Interop;
 using Aperture.App.Services;
+using Aperture.App.Views;
+using Aperture.Core.Input;
+using Aperture.Core.Library;
 using Aperture.Core.Media;
 using Aperture.Core.Settings;
+using Aperture.Core.Windowing;
 using Aperture.Playback.Mpv;
 using Aperture.Playback.Mpv.Interop;
 using Aperture.Video;
@@ -20,9 +24,9 @@ using Windows.UI.Core;
 namespace Aperture.App;
 
 /// <summary>
-/// The one Aperture window: owns navigation between Home, Settings and the player, the
-/// window modes (windowed, full screen, mini-player), window-wide keyboard shortcuts,
-/// drag and drop, and the title bar.
+/// The one Aperture window: owns navigation between Home, Library, Settings and the
+/// player, the window modes (windowed, full screen, mini-player), window-wide keyboard
+/// shortcuts, adding library folders, drag and drop, and the title bar.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage(
     "Design",
@@ -37,15 +41,21 @@ public sealed partial class MainWindow : Window
     private const double TitleBarHeight = 48;
     private const double CompactTitleBarHeight = 32;
 
+    /// <summary>Wait after launch before re-scanning library folders, so startup stays quick.</summary>
+    private static readonly TimeSpan LaunchScanDelay = TimeSpan.FromSeconds(3);
+
     private readonly AppServices? _services;
     private readonly MpvPlaybackEngine? _engine;
     private readonly VideoPresenter? _presenter;
     private string? _engineProblem;
     private readonly ThumbnailCache _thumbnails = new();
-    private AppSettings _settings;
+    private ShortcutMap _shortcuts;
     private Screen _screen = Screen.Home;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _responsiveness;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _homeRefresh;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _showsRefresh;
     private Screen _screenBeforeSettings = Screen.Home;
+    private Screen _screenBeforePlayer = Screen.Home;
     private bool _closingSaved;
     private Windows.Graphics.RectInt32? _windowedBounds;
 
@@ -53,7 +63,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         _services = startup.Services;
-        _settings = _services?.InitialSettings ?? AppSettings.Default;
+        _shortcuts = _services?.InitialShortcuts ?? ShortcutMap.Default;
 
         ConfigureWindow();
 
@@ -62,22 +72,48 @@ public sealed partial class MainWindow : Window
         PlayerPage.FullscreenToggleRequested += (_, _) => ToggleFullscreen();
         PlayerPage.MiniPlayerToggleRequested += (_, _) => ToggleMiniPlayer();
         PlayerPage.OpenRequested += async (_, _) => await PickAndOpenAsync();
-        PlayerPage.DismissRequested += async (_, _) => await ShowHomeAsync();
-        PlayerPage.StopRequested += async (_, _) => await ShowHomeAsync();
+        PlayerPage.DismissRequested += async (_, _) => await LeavePlayerAsync();
+        PlayerPage.StopRequested += async (_, _) => await LeavePlayerAsync();
         PlayerPage.SubtitlePickRequested += async (_, _) => await PickSubtitleAsync();
         PlayerPage.OverlayVisibilityChanged += (_, visible) => SetChromeVisible(visible);
+        PlayerPage.SubtitleStyleChanged += async (_, style) => await SaveSettingsAsync(s => s with { Subtitles = style });
+        PlayerPage.EpisodeRequested += async (_, path) => await OpenFileAsync(path);
 
-        HomePage.PlayRequested += async (_, path) => await OpenFileAsync(path);
+        HomePage.PlayRequested += async (_, request) => await OpenFileAsync(request.Path, request.FromStart);
         HomePage.OpenRequested += async (_, _) => await PickAndOpenAsync();
+        HomePage.AddFolderRequested += async (_, _) => await AddLibraryFolderAsync();
+        HomePage.LibraryRequested += async (_, category) => await ShowLibraryAsync(category);
+        LibraryPage.PlayRequested += async (_, request) => await OpenFileAsync(request.Path, request.FromStart);
+        LibraryPage.AddFolderRequested += async (_, _) => await AddLibraryFolderAsync();
+        LibraryPage.FoldersRequested += (_, _) => ShowSettings();
 
-        if (_services is not null)
+        if (_services is { } services)
         {
-            PlayerPage.Initialize(_engine, _presenter, _engineProblem, _services.History, () => _settings);
-            HomePage.Initialize(_services.History, _thumbnails);
-            SettingsPage.Initialize(_services.SettingsStore, _services.History, _settings, _services.DataLocation.Root);
-            SettingsPage.SettingsChanged += (_, settings) => _settings = settings;
+            PlayerPage.Initialize(_engine, _presenter, _engineProblem, services, () => _shortcuts);
+            HomePage.Initialize(services, _thumbnails);
+            LibraryPage.Initialize(services, _thumbnails);
+            SettingsPage.Initialize(services, () => _shortcuts, _engine?.SupportsSubtitleBox ?? true);
+            SettingsPage.SettingsChanged += (_, settings) =>
+            {
+                PlayerPage.ApplySettings(settings);
+                services.Analysis.Update(services.Shows.Catalog, settings.FindSegments);
+            };
+            SettingsPage.ShortcutsChanged += (_, map) =>
+            {
+                _shortcuts = map;
+                PlayerPage.ApplyShortcutLabels();
+            };
             SettingsPage.HistoryCleared += (_, _) => _thumbnails.Clear();
+            SettingsPage.AddFolderRequested += async (_, _) => await AddLibraryFolderAsync();
+            services.Library.Changed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+            {
+                ScheduleHomeRefresh();
+                ScheduleShowsRefresh(TimeSpan.FromSeconds(2));
+            });
+            services.Library.Notice += (_, notice) => DispatcherQueue.TryEnqueue(() => SettingsPage.ShowFolderMessage(notice));
             _ = HomePage.RefreshAsync();
+            StartLaunchScan(services);
+            ScheduleShowsRefresh(LaunchScanDelay + TimeSpan.FromSeconds(2));
         }
         else
         {
@@ -85,6 +121,7 @@ public sealed partial class MainWindow : Window
             SearchBox.Visibility = Visibility.Collapsed;
             SettingsButton.Visibility = Visibility.Collapsed;
             OpenButton.Visibility = Visibility.Collapsed;
+            LibraryButton.Visibility = Visibility.Collapsed;
             StartupErrorPanel.Visibility = Visibility.Visible;
             StartupErrorDetail.Text = startup.Failure is null
                 ? string.Empty
@@ -98,6 +135,7 @@ public sealed partial class MainWindow : Window
     private enum Screen
     {
         Home,
+        Library,
         Settings,
         Player,
     }
@@ -106,8 +144,8 @@ public sealed partial class MainWindow : Window
 
     private bool IsMini => AppWindow.Presenter.Kind == AppWindowPresenterKind.CompactOverlay;
 
-    /// <summary>Opens a file in the player: from the picker, drag and drop, Home, or the command line.</summary>
-    public async Task OpenFileAsync(string path)
+    /// <summary>Opens a file in the player: from the picker, drag and drop, Home, the library, or the command line.</summary>
+    public async Task OpenFileAsync(string path, bool fromStart = false)
     {
         if (_services is null)
         {
@@ -115,12 +153,17 @@ public sealed partial class MainWindow : Window
         }
 
         var fullPath = Path.GetFullPath(path);
+        if (_screen != Screen.Player)
+        {
+            _screenBeforePlayer = _screen == Screen.Library ? Screen.Library : Screen.Home;
+        }
+
         ShowScreen(Screen.Player);
         await EnsureVideoSurfaceAsync();
         AppTitleBar.Title = MediaFileTypes.TitleFromPath(fullPath);
         // Keyboard focus goes to the player so playback shortcuts work straight away.
         PlayerPage.Focus(FocusState.Programmatic);
-        await PlayerPage.OpenAsync(fullPath);
+        await PlayerPage.OpenAsync(fullPath, fromStart);
         AppTitleBar.Title = PlayerPage.Title;
     }
 
@@ -128,7 +171,7 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// Creates the libmpv engine and its video surface. Neither failing stops the app: Home,
-    /// history and settings still work, and the player explains what went wrong.
+    /// the library, history and settings still work, and the player explains what went wrong.
     /// </summary>
     private (MpvPlaybackEngine? Engine, VideoPresenter? Presenter) StartPlayback()
     {
@@ -173,7 +216,7 @@ public sealed partial class MainWindow : Window
         {
             AppLog.Error("The video surface could not start", error);
             _engineProblem = $"The video surface could not start: {error.Message}";
-            PlayerPage.Initialize(null, null, _engineProblem, _services!.History, () => _settings);
+            PlayerPage.Initialize(null, null, _engineProblem, _services!, () => _shortcuts);
         }
     }
 
@@ -186,7 +229,7 @@ public sealed partial class MainWindow : Window
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
         SetCaptionButtonsVisible(true);
 
-        var scale = NativeMethods.GetDpiForWindow(Win32Interop.GetWindowFromWindowId(AppWindow.Id)) / 96.0;
+        var scale = Scale();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
             presenter.PreferredMinimumWidth = (int)(MinimumWidth * scale);
@@ -203,6 +246,8 @@ public sealed partial class MainWindow : Window
             width,
             height));
     }
+
+    private double Scale() => NativeMethods.GetDpiForWindow(Win32Interop.GetWindowFromWindowId(AppWindow.Id)) / 96.0;
 
     private void SetCaptionButtonsVisible(bool visible)
     {
@@ -233,23 +278,65 @@ public sealed partial class MainWindow : Window
 
     private void ShowScreen(Screen screen)
     {
+        if (_screen == Screen.Library && screen != Screen.Library)
+        {
+            LibraryPage.Hide();
+        }
+
         _screen = screen;
         HomePage.Visibility = screen == Screen.Home && _services is not null ? Visibility.Visible : Visibility.Collapsed;
+        LibraryPage.Visibility = screen == Screen.Library ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = screen == Screen.Settings ? Visibility.Visible : Visibility.Collapsed;
         PlayerPage.Visibility = screen == Screen.Player ? Visibility.Visible : Visibility.Collapsed;
         PageHost.Visibility = screen == Screen.Player ? Visibility.Collapsed : Visibility.Visible;
 
-        var onHome = screen == Screen.Home;
-        AppTitleBar.IsBackButtonVisible = !onHome;
+        var browsing = screen is Screen.Home or Screen.Library;
+        AppTitleBar.IsBackButtonVisible = screen != Screen.Home;
         AppTitleBar.Title = screen == Screen.Player ? PlayerPage.Title : string.Empty;
         Wordmark.Visibility = screen == Screen.Player ? Visibility.Collapsed : Visibility.Visible;
-        SearchBox.Visibility = onHome && _services is not null ? Visibility.Visible : Visibility.Collapsed;
+        SearchBox.Visibility = browsing && _services is not null ? Visibility.Visible : Visibility.Collapsed;
+        SearchBox.PlaceholderText = screen == Screen.Library ? "Search the library" : "Search";
         GlobalActions.Visibility = screen == Screen.Player ? Visibility.Collapsed : Visibility.Visible;
         SettingsButton.Visibility = screen == Screen.Settings || _services is null ? Visibility.Collapsed : Visibility.Visible;
+        LibraryButton.Visibility = screen == Screen.Library || _services is null ? Visibility.Collapsed : Visibility.Visible;
         SetChromeVisible(true);
     }
 
     private async Task ShowHomeAsync()
+    {
+        await LeaveWindowModesAndPlayerAsync();
+        ClearSearch();
+        ShowScreen(Screen.Home);
+        await HomePage.RefreshAsync();
+    }
+
+    private async Task ShowLibraryAsync(MediaCategory? category = null)
+    {
+        if (_services is null)
+        {
+            return;
+        }
+
+        await LeaveWindowModesAndPlayerAsync();
+        ClearSearch();
+        ShowScreen(Screen.Library);
+        await LibraryPage.ShowAsync(category);
+    }
+
+    /// <summary>Leaving the player goes back to where the video was chosen (Home or the library).</summary>
+    private async Task LeavePlayerAsync()
+    {
+        if (_screenBeforePlayer == Screen.Library)
+        {
+            await ShowLibraryAsync();
+        }
+        else
+        {
+            await ShowHomeAsync();
+        }
+    }
+
+    private async Task LeaveWindowModesAndPlayerAsync()
     {
         if (IsMini || IsFullscreen)
         {
@@ -260,9 +347,6 @@ public sealed partial class MainWindow : Window
         {
             await PlayerPage.CloseAsync();
         }
-
-        ShowScreen(Screen.Home);
-        await HomePage.RefreshAsync();
     }
 
     private void ShowSettings()
@@ -272,36 +356,313 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _screenBeforeSettings = _screen == Screen.Player ? Screen.Home : _screen;
+        _screenBeforeSettings = _screen == Screen.Player ? _screenBeforePlayer : _screen;
         if (_screen == Screen.Player)
         {
+            if (IsMini || IsFullscreen)
+            {
+                SetWindowed();
+            }
+
             _ = PlayerPage.CloseAsync();
         }
 
+        SettingsPage.Refresh();
         ShowScreen(Screen.Settings);
     }
+
+    private bool IsDialogOpen() =>
+        Content.XamlRoot is { } root
+        && Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(root).Any(popup => popup.Child is ContentDialog);
 
     private async Task GoBackAsync()
     {
         switch (_screen)
         {
             case Screen.Player:
-                await ShowHomeAsync();
+                await LeavePlayerAsync();
                 break;
-            case Screen.Settings when _screenBeforeSettings == Screen.Home:
+            case Screen.Settings when _screenBeforeSettings == Screen.Library:
+                await ShowLibraryAsync();
+                break;
+            case Screen.Settings:
+            case Screen.Library:
                 await ShowHomeAsync();
                 break;
         }
+    }
+
+    private void ClearSearch()
+    {
+        if (SearchBox.Text.Length > 0)
+        {
+            SearchBox.Text = string.Empty;
+        }
+    }
+
+    private void ScheduleHomeRefresh()
+    {
+        if (_screen != Screen.Home)
+        {
+            return;
+        }
+
+        if (_homeRefresh is null)
+        {
+            _homeRefresh = DispatcherQueue.CreateTimer();
+            _homeRefresh.Interval = TimeSpan.FromSeconds(1);
+            _homeRefresh.IsRepeating = false;
+            _homeRefresh.Tick += async (_, _) =>
+            {
+                if (_screen == Screen.Home)
+                {
+                    await HomePage.RefreshAsync();
+                }
+            };
+        }
+
+        _homeRefresh.Stop();
+        _homeRefresh.Start();
+    }
+
+    /// <summary>
+    /// Rebuilds the shows after the library changed (episode order, next and previous) and
+    /// queues intro and credits analysis for what is new. Waits for changes to settle first.
+    /// </summary>
+    private void ScheduleShowsRefresh(TimeSpan delay)
+    {
+        if (_services is not { } services)
+        {
+            return;
+        }
+
+        if (_showsRefresh is null)
+        {
+            _showsRefresh = DispatcherQueue.CreateTimer();
+            _showsRefresh.IsRepeating = false;
+            _showsRefresh.Tick += async (_, _) =>
+            {
+                try
+                {
+                    var catalog = await services.Shows.RefreshAsync();
+                    services.Analysis.Update(catalog, services.Settings.Current.FindSegments);
+                }
+                catch (System.Data.Common.DbException error)
+                {
+                    AppLog.Error("Could not read the library's shows", error);
+                }
+            };
+        }
+
+        _showsRefresh.Stop();
+        _showsRefresh.Interval = delay;
+        _showsRefresh.Start();
     }
 
     private async void OnBackRequested(TitleBar sender, object args) => await GoBackAsync();
 
     private void OnSettingsClick(object sender, RoutedEventArgs e) => ShowSettings();
 
+    private async void OnLibraryClick(object sender, RoutedEventArgs e) => await ShowLibraryAsync();
+
     private async void OnOpenClick(object sender, RoutedEventArgs e) => await PickAndOpenAsync();
 
-    private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) =>
-        HomePage.Search(sender.Text);
+    private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (_screen == Screen.Library)
+        {
+            LibraryPage.Search(sender.Text);
+        }
+        else
+        {
+            HomePage.Search(sender.Text);
+        }
+    }
+
+    private async Task SaveSettingsAsync(Func<AppSettings, AppSettings> change)
+    {
+        if (_services is null)
+        {
+            return;
+        }
+
+        var updated = change(_services.Settings.Current);
+        _services.Settings.Current = updated;
+        try
+        {
+            await _services.SettingsStore.SaveAsync(updated);
+        }
+        catch (System.Data.Common.DbException error)
+        {
+            AppLog.Error("Could not save settings", error);
+        }
+
+        SettingsPage.Refresh();
+    }
+
+    // ===== Library folders =====
+
+    /// <summary>A few seconds after launch, looks for new, changed and removed files in every library folder.</summary>
+    private void StartLaunchScan(AppServices services)
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = LaunchScanDelay;
+        timer.IsRepeating = false;
+        timer.Tick += async (_, _) =>
+        {
+            try
+            {
+                if ((await services.Library.GetFoldersAsync()).Count > 0)
+                {
+                    services.Library.RequestScan();
+                }
+            }
+            catch (System.Data.Common.DbException error)
+            {
+                AppLog.Error("Could not start the library scan", error);
+            }
+        };
+        timer.Start();
+    }
+
+    /// <summary>
+    /// Picks a folder, checks it is a sensible library folder (not a drive, Windows, the whole
+    /// profile, or Aperture's own data), asks what it holds, then adds it and starts scanning.
+    /// </summary>
+    private async Task AddLibraryFolderAsync()
+    {
+        if (_services is null)
+        {
+            return;
+        }
+
+        var picker = new FolderPicker(AppWindow.Id)
+        {
+            SuggestedStartLocation = PickerLocationId.VideosLibrary,
+            CommitButtonText = "Add to library",
+        };
+
+        PickFolderResult? result;
+        try
+        {
+            result = await picker.PickSingleFolderAsync();
+        }
+        catch (System.Runtime.InteropServices.COMException error)
+        {
+            AppLog.Error("The folder picker failed to open", error);
+            return;
+        }
+
+        if (result is null || string.IsNullOrEmpty(result.Path))
+        {
+            return;
+        }
+
+        var existing = (await _services.Library.GetFoldersAsync()).Select(f => f.Path);
+        var problem = LibraryFolderRules.Check(result.Path, ProtectedFolders(), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), existing, _services.DataLocation.Root);
+        if (problem is not null)
+        {
+            await ShowMessageAsync("Choose a different folder", problem);
+            return;
+        }
+
+        var kind = await AskFolderKindAsync(result.Path);
+        if (kind is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _services.Library.AddFolderAsync(result.Path, kind.Value);
+        }
+        catch (System.Data.Common.DbException error)
+        {
+            AppLog.Error("Could not add a library folder", error);
+            await ShowMessageAsync("The folder wasn’t added", "Aperture couldn’t save it to its records. Details are in Aperture’s log.");
+            return;
+        }
+
+        SettingsPage.ShowFolderMessage($"Added “{Path.GetFileName(result.Path.TrimEnd('\\'))}”. Scanning in the background; you can keep using Aperture.");
+        await SettingsPage.RefreshFoldersAsync();
+        if (_screen != Screen.Settings)
+        {
+            await ShowLibraryAsync();
+        }
+    }
+
+    private static IEnumerable<string> ProtectedFolders()
+    {
+        foreach (var folder in (Environment.SpecialFolder[])[
+            Environment.SpecialFolder.Windows,
+            Environment.SpecialFolder.ProgramFiles,
+            Environment.SpecialFolder.ProgramFilesX86,
+            Environment.SpecialFolder.CommonApplicationData,
+            Environment.SpecialFolder.ApplicationData,
+            Environment.SpecialFolder.LocalApplicationData])
+        {
+            var path = Environment.GetFolderPath(folder);
+            if (!string.IsNullOrEmpty(path))
+            {
+                yield return path;
+            }
+        }
+    }
+
+    private async Task<LibraryFolderKind?> AskFolderKindAsync(string path)
+    {
+        var choices = new RadioButtons { Header = "What’s in this folder?" };
+        foreach (var kind in MediaCategories.FolderKinds)
+        {
+            choices.Items.Add(new RadioButton { Content = MediaCategories.Label(kind), Tag = kind });
+        }
+
+        choices.SelectedIndex = 0;
+        var content = new StackPanel { Spacing = 16 };
+        content.Children.Add(new TextBlock
+        {
+            Text = path,
+            Style = (Style)Application.Current.Resources["CaptionTextStyle"],
+            IsTextSelectionEnabled = true,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        content.Children.Add(choices);
+        content.Children.Add(new TextBlock
+        {
+            Text = "This only guides how files are sorted; you can correct any item later.",
+            Style = (Style)Application.Current.Resources["CaptionTextStyle"],
+        });
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "Add to library",
+            Content = content,
+            PrimaryButtonText = "Add and scan",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"],
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return null;
+        }
+
+        return choices.SelectedItem is RadioButton { Tag: LibraryFolderKind chosen } ? chosen : LibraryFolderKind.Mixed;
+    }
+
+    private async Task ShowMessageAsync(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = title,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Style = (Style)Application.Current.Resources["BodyTextStyle"] },
+            CloseButtonText = "OK",
+            Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"],
+        };
+        await dialog.ShowAsync();
+    }
 
     // ===== Opening files =====
 
@@ -318,7 +679,7 @@ public sealed partial class MainWindow : Window
             ViewMode = PickerViewMode.Thumbnail,
             CommitButtonText = "Play",
         };
-        foreach (var extension in MediaFileTypes.VideoExtensions)
+        foreach (var extension in MediaFileTypes.VideoExtensions.Concat(MediaFileTypes.AudioExtensions))
         {
             picker.FileTypeFilter.Add(extension);
         }
@@ -413,7 +774,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var file = items.OfType<StorageFile>().FirstOrDefault(f => MediaFileTypes.IsVideoFile(f.Path))
+        var file = items.OfType<StorageFile>().FirstOrDefault(f => MediaFileTypes.IsPlayableFile(f.Path))
             ?? items.OfType<StorageFile>().FirstOrDefault();
         if (file is not null && !string.IsNullOrEmpty(file.Path))
         {
@@ -436,6 +797,7 @@ public sealed partial class MainWindow : Window
                 SetWindowed();
             }
 
+            RememberWindowedBounds();
             AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
         }
     }
@@ -453,20 +815,55 @@ public sealed partial class MainWindow : Window
             SetWindowed();
         }
 
-        _windowedBounds = new Windows.Graphics.RectInt32(AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
+        RememberWindowedBounds();
+
+        // The compact overlay stays above other windows until the user returns.
         var presenter = CompactOverlayPresenter.Create();
         presenter.InitialSize = CompactOverlaySize.Medium;
         AppWindow.SetPresenter(presenter);
     }
 
+    private void RememberWindowedBounds()
+    {
+        if (AppWindow.Presenter.Kind == AppWindowPresenterKind.Overlapped)
+        {
+            _windowedBounds = new Windows.Graphics.RectInt32(AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
+        }
+    }
+
+    /// <summary>
+    /// Returns to a normal window where it was before full screen or the mini-player. If that
+    /// place is no longer on any display (a monitor was unplugged, the resolution changed),
+    /// the window moves onto the display it overlaps most and shrinks to fit.
+    /// </summary>
     private void SetWindowed()
     {
-        var wasMini = IsMini;
         AppWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
-        if (wasMini && _windowedBounds is { } bounds)
+        if (_windowedBounds is not { } saved)
         {
-            AppWindow.MoveAndResize(bounds);
+            return;
         }
+
+        var bounds = new PixelRect(saved.X, saved.Y, saved.Width, saved.Height);
+        // FindAll's list cannot be enumerated with foreach (its projection has no IIterable
+        // behind it, so GetEnumerator throws); index into it instead.
+        var areas = new List<PixelRect>();
+        var displays = DisplayArea.FindAll();
+        for (var i = 0; i < displays.Count; i++)
+        {
+            var area = displays[i].WorkArea;
+            areas.Add(new PixelRect(area.X, area.Y, area.Width, area.Height));
+        }
+
+        if (areas.Count == 0)
+        {
+            AppWindow.MoveAndResize(saved);
+            return;
+        }
+
+        var scale = Scale();
+        var fitted = WindowPlacement.FitInto(bounds, WindowPlacement.ChooseWorkArea(bounds, areas), (int)(MinimumWidth * scale), (int)(MinimumHeight * scale));
+        AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(fitted.X, fitted.Y, fitted.Width, fitted.Height));
     }
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
@@ -484,30 +881,43 @@ public sealed partial class MainWindow : Window
 
     private async void OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // A dialog owns the keyboard: Esc must close it, not navigate the screen behind it.
+        if (IsDialogOpen())
+        {
+            return;
+        }
+
         var control = IsDown(VirtualKey.Control);
         var shift = IsDown(VirtualKey.Shift);
         var alt = IsDown(VirtualKey.Menu);
-        var typing = FocusManager.GetFocusedElement(Content.XamlRoot) is TextBox;
+        var typing = IsTyping();
 
-        if (control && e.Key == VirtualKey.O)
+        if (control && !alt && e.Key == VirtualKey.O)
         {
             e.Handled = true;
             await PickAndOpenAsync();
             return;
         }
 
-        if (control && e.Key == (VirtualKey)188)
+        if (control && !alt && e.Key == (VirtualKey)KeyNames.Codes.Comma)
         {
-            // Ctrl+, (comma has no named VirtualKey).
             e.Handled = true;
             ShowSettings();
             return;
         }
 
-        if (control && e.Key == VirtualKey.F)
+        if (control && !alt && e.Key == VirtualKey.L)
         {
             e.Handled = true;
-            if (_screen != Screen.Home)
+            await ShowLibraryAsync();
+            LibraryPage.FocusFirstItem();
+            return;
+        }
+
+        if (control && !alt && e.Key == VirtualKey.F)
+        {
+            e.Handled = true;
+            if (_screen is not (Screen.Home or Screen.Library))
             {
                 await ShowHomeAsync();
             }
@@ -525,18 +935,29 @@ public sealed partial class MainWindow : Window
 
         if (e.Key == VirtualKey.Escape)
         {
-            if (IsFullscreen || IsMini)
+            if (_screen == Screen.Player && PlayerPage.CloseTopPanel())
+            {
+                e.Handled = true;
+            }
+            else if (IsFullscreen || IsMini)
             {
                 e.Handled = true;
                 SetWindowed();
             }
-            else if (_screen == Screen.Home && SearchBox.Text.Length > 0)
+            else if (_screen is Screen.Home or Screen.Library && SearchBox.Text.Length > 0)
             {
                 e.Handled = true;
                 SearchBox.Text = string.Empty;
-                HomePage.FocusFirstItem();
+                if (_screen == Screen.Library)
+                {
+                    LibraryPage.FocusFirstItem();
+                }
+                else
+                {
+                    HomePage.FocusFirstItem();
+                }
             }
-            else if (_screen == Screen.Settings)
+            else if (_screen is Screen.Settings or Screen.Library)
             {
                 e.Handled = true;
                 await GoBackAsync();
@@ -545,11 +966,32 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (_screen == Screen.Player && !typing && !alt)
+        if (_screen != Screen.Player || typing)
         {
-            e.Handled = PlayerPage.HandleKey(e.Key, control, shift);
+            return;
         }
+
+        var modifiers = (control ? KeyModifiers.Control : KeyModifiers.None)
+            | (shift ? KeyModifiers.Shift : KeyModifiers.None)
+            | (alt ? KeyModifiers.Alt : KeyModifiers.None);
+        if (_shortcuts.Resolve(new KeyChord((int)e.Key, modifiers)) is not { } command)
+        {
+            return;
+        }
+
+        // Held keys repeat only where that makes sense (seeking, volume); holding F does not flicker.
+        if (e.KeyStatus.WasKeyDown && !PlayerCommands.Repeats(command))
+        {
+            e.Handled = !PlayerPage.IsFocusInPanel;
+            return;
+        }
+
+        e.Handled = PlayerPage.HandleCommand(command);
     }
+
+    /// <summary>True when the keyboard is typing into a text field, where letters and arrows belong to the field.</summary>
+    private bool IsTyping() =>
+        FocusManager.GetFocusedElement(Content.XamlRoot) is TextBox or PasswordBox or RichEditBox or AutoSuggestBox or NumberBox;
 
     /// <summary>
     /// Logs when the interface thread falls behind by more than half a second, so a slow
@@ -590,6 +1032,10 @@ public sealed partial class MainWindow : Window
         args.Cancel = true;
         _closingSaved = true;
         await PlayerPage.CloseAsync();
+
+        // A running scan stops here; everything it found is already saved and the next scan resumes.
+        _services?.Library.Dispose();
+        _services?.Analysis.Dispose();
 
         // Fixed order: the panel lets go of the swap chain, the video thread frees libmpv's
         // render context, and only then is libmpv itself destroyed.

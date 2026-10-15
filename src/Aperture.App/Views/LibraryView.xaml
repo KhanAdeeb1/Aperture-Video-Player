@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Library. Primary task: find something to watch. One grid of 16:9 cards under a row
+    of kinds (All, Movies, TV shows, Personal videos, Podcasts) and two quiet choices
+    (which items, what order). Scanning is shown in one line at the top and never
+    blocks the grid. Search uses the title bar box.
+-->
+<UserControl
+    x:Class="Aperture.App.Views.LibraryView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Aperture.App.Views">
+
+    <Grid x:Name="Root">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="ContentStates">
+                <VisualState x:Name="LoadingState" />
+                <VisualState x:Name="NoFoldersState">
+                    <VisualState.Setters>
+                        <Setter Target="NoFoldersPanel.Visibility" Value="Visible" />
+                        <Setter Target="Toolbar.Visibility" Value="Collapsed" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="ItemsState">
+                    <VisualState.Setters>
+                        <Setter Target="ItemsScroller.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="EmptyState">
+                    <VisualState.Setters>
+                        <Setter Target="EmptyPanel.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="WidthStates">
+                <VisualState x:Name="Wide">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="900" />
+                    </VisualState.StateTriggers>
+                </VisualState>
+                <VisualState x:Name="Narrow">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="Toolbar.Margin" Value="24,8,24,0" />
+                        <Setter Target="ItemsGrid.Margin" Value="24,0,24,48" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== Heading, kinds, choices and scan status ===== -->
+        <StackPanel x:Name="Toolbar" Margin="40,8,40,0">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    AutomationProperties.HeadingLevel="Level1"
+                    Style="{StaticResource TitleTextStyle}"
+                    Text="Library" />
+
+                <!-- Scan status: one quiet line, with Cancel while running. -->
+                <StackPanel
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <ProgressRing
+                        x:Name="ScanRing"
+                        Width="16"
+                        Height="16"
+                        IsActive="False"
+                        Visibility="Collapsed" />
+                    <TextBlock
+                        x:Name="ScanText"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="ScanText"
+                        AutomationProperties.LiveSetting="Polite"
+                        Style="{StaticResource CaptionTextStyle}"
+                        TextWrapping="NoWrap" />
+                    <Button
+                        x:Name="CancelScanButton"
+                        AutomationProperties.AutomationId="CancelScanButton"
+                        Click="OnCancelScanClick"
+                        Content="Cancel"
+                        Style="{StaticResource QuietButtonStyle}"
+                        Visibility="Collapsed" />
+                    <Button
+                        x:Name="ScanButton"
+                        AutomationProperties.AutomationId="ScanButton"
+                        AutomationProperties.Name="Scan folders for changes"
+                        Click="OnScanClick"
+                        Style="{StaticResource IconButtonStyle}"
+                        ToolTipService.ToolTip="Scan folders for changes">
+                        <FontIcon Glyph="&#xE72C;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                    <Button
+                        x:Name="FoldersButton"
+                        AutomationProperties.AutomationId="FoldersButton"
+                        AutomationProperties.Name="Library folders"
+                        Click="OnFoldersClick"
+                        Style="{StaticResource IconButtonStyle}"
+                        ToolTipService.ToolTip="Library folders">
+                        <FontIcon Glyph="&#xE8B7;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <Grid Margin="0,16,0,16" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <SelectorBar
+                    x:Name="Kinds"
+                    AutomationProperties.AutomationId="LibraryKinds"
+                    AutomationProperties.Name="Kind"
+                    SelectionChanged="OnKindChanged" />
+                <ComboBox
+                    x:Name="FilterBox"
+                    Grid.Column="1"
+                    MinWidth="140"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="FilterBox"
+                    AutomationProperties.Name="Show"
+                    SelectionChanged="OnChoiceChanged" />
+                <ComboBox
+                    x:Name="SortBox"
+                    Grid.Column="2"
+                    MinWidth="150"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="SortBox"
+                    AutomationProperties.Name="Order"
+                    SelectionChanged="OnChoiceChanged" />
+            </Grid>
+        </StackPanel>
+
+        <!-- ===== Grid ===== -->
+        <ScrollViewer
+            x:Name="ItemsScroller"
+            Grid.Row="1"
+            AutomationProperties.AutomationId="LibraryItems"
+            AutomationProperties.Name="Library items"
+            HorizontalScrollMode="Disabled"
+            VerticalScrollBarVisibility="Auto"
+            Visibility="Collapsed">
+            <ItemsRepeater
+                x:Name="ItemsGrid"
+                Margin="40,0,40,48"
+                ElementPrepared="OnCardPrepared">
+                <ItemsRepeater.Layout>
+                    <UniformGridLayout
+                        ItemsStretch="Fill"
+                        MinColumnSpacing="16"
+                        MinItemWidth="{StaticResource ArtworkSmallWidth}"
+                        MinRowSpacing="24" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate>
+                        <local:MediaCard />
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+        </ScrollViewer>
+
+        <!-- ===== Nothing matches (filters, search, or a scan still finding files) ===== -->
+        <StackPanel
+            x:Name="EmptyPanel"
+            Grid.Row="1"
+            MaxWidth="420"
+            Margin="24,0,24,64"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="8"
+            Visibility="Collapsed">
+            <FontIcon
+                Margin="0,0,0,8"
+                FontSize="{StaticResource IconStatus}"
+                Foreground="{ThemeResource TextTertiaryBrush}"
+                Glyph="&#xE8B7;"
+                Style="{StaticResource IconGlyphStyle}" />
+            <TextBlock
+                x:Name="EmptyTitle"
+                AutomationProperties.LiveSetting="Polite"
+                HorizontalTextAlignment="Center"
+                Style="{StaticResource SubtitleTextStyle}" />
+            <TextBlock
+                x:Name="EmptyText"
+                HorizontalTextAlignment="Center"
+                Style="{StaticResource BodyTextStyle}" />
+        </StackPanel>
+
+        <!-- ===== No folders yet ===== -->
+        <StackPanel
+            x:Name="NoFoldersPanel"
+            Grid.RowSpan="2"
+            MaxWidth="460"
+            Margin="24,0,24,48"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Visibility="Collapsed">
+            <FontIcon
+                Margin="0,0,0,24"
+                FontSize="{StaticResource IconStatus}"
+                Foreground="{ThemeResource TextTertiaryBrush}"
+                Glyph="&#xE8F4;"
+                Style="{StaticResource IconGlyphStyle}" />
+            <TextBlock
+                AutomationProperties.HeadingLevel="Level1"
+                HorizontalTextAlignment="Center"
+                Style="{StaticResource TitleTextStyle}"
+                Text="Build your library" />
+            <TextBlock
+                Margin="0,12,0,0"
+                HorizontalTextAlignment="Center"
+                Style="{StaticResource BodyTextStyle}"
+                Text="Choose the folders that hold your films, shows, home videos or podcasts. Aperture reads only those folders, sorts what it finds, and never changes, moves or renames your files." />
+            <Button
+                x:Name="AddFirstFolderButton"
+                Margin="0,28,0,0"
+                HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="AddFirstFolderButton"
+                Click="OnAddFolderClick"
+                Style="{StaticResource ApertureAccentButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon FontSize="{StaticResource IconMedium}" Glyph="&#xE8F4;" Style="{StaticResource IconGlyphStyle}" />
+                    <TextBlock Text="Add a folder" />
+                </StackPanel>
+            </Button>
+            <TextBlock
+                Margin="0,16,0,0"
+                HorizontalTextAlignment="Center"
+                Style="{StaticResource CaptionTextStyle}"
+                Text="Works offline. Artwork from the internet is optional and off until you turn it on in Settings." />
+        </StackPanel>
+    </Grid>
+</UserControl>

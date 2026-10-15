@@ -18,6 +18,7 @@
 # Platform-neutral tests
 dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj
 dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj
+dotnet test tests/Aperture.Media.Tests/Aperture.Media.Tests.csproj
 
 # Engine tests against real files (see "Engine tests" below)
 powershell -File tools/Get-Libmpv.ps1 -RuntimeIdentifier win-x64
@@ -47,10 +48,11 @@ Only the platform-neutral projects build there:
 ```bash
 dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj
 dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj
+dotnet test tests/Aperture.Media.Tests/Aperture.Media.Tests.csproj
 dotnet test tests/Aperture.Playback.Mpv.Tests/Aperture.Playback.Mpv.Tests.csproj   # needs libmpv2
 ```
 
-`Aperture.Video` also builds there (`EnableWindowsTargeting`), but cannot run. `dotnet build Aperture.sln` fails on non-Windows hosts because the WinUI XAML compiler (`XamlCompiler.exe`) is a Windows executable. This was confirmed in the Milestone 0 Linux environment.
+`Aperture.Video` also builds there (`EnableWindowsTargeting`), but cannot run. The app's C# can still be compile-checked on Linux by a scratch project that targets `net10.0-windows10.0.22621.0` with `EnableWindowsTargeting`, includes the app's `.cs` files and stands in for the XAML compiler's output with generated partial classes (one field per `x:Name` and an `InitializeComponent`). XAML markup itself is only checked by the Windows CI build. `dotnet build Aperture.sln` fails on non-Windows hosts because the WinUI XAML compiler (`XamlCompiler.exe`) is a Windows executable. This was confirmed in the Milestone 0 Linux environment.
 
 ## Engine tests
 
@@ -62,13 +64,15 @@ APERTURE_TEST_MEDIA=/tmp/engine-media APERTURE_TEST_RESULTS=/tmp/results.md \
   dotnet test tests/Aperture.Playback.Mpv.Tests/Aperture.Playback.Mpv.Tests.csproj
 ```
 
+The generator also makes three 90 s episodes of a show, *Harbour* (`Harbour.S01E01-03.mkv`), with cold opens of different lengths (10, 3 and 15 s), the same 20 s opening and the same 20 s closing credits on a black picture; E02 has chapters. `SignalReaderTests` decodes them through libmpv and checks that the intro and credits are found where each episode actually has them.
+
 Without `APERTURE_TEST_MEDIA`, or without libmpv, the file tests are reported as **skipped**, never passed. `APERTURE_TEST_RESULTS` collects one row per file (container, codecs, size, what happened) into a markdown table.
 
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push and pull request:
 
-- **Core and data tests** on `ubuntu-latest` and `windows-latest`.
+- **Core, data and library tests** on `ubuntu-latest` and `windows-latest`.
 - **Test media**: an Ubuntu job generates the visual-review clips and the engine test files with FFmpeg.
 - **libmpv engine tests** on Ubuntu (distribution `libmpv2`) and Windows (the pinned build). The measured results table is written to the job summary.
 - **Windows app build** for `x64` and `ARM64`, checking that `libmpv-2.dll` and `av_libglesv2.dll` are next to the app, with a launch smoke test on x64.

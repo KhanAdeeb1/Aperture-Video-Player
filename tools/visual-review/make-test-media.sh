@@ -76,4 +76,51 @@ head -c 400000 /dev/urandom > "$out/Damaged Copy.mp4"
 # Not a video at all.
 printf 'Films to watch this winter\n' > "$out/Reading List.txt"
 
-ls -la "$out"
+# A small library tree for the library screens. Names follow common conventions so the
+# parser sorts them; two copies of one film at different sizes exercise copy detection, and
+# "Untitled Project" has nothing to go on, so it is shown as needing a check.
+lib="$out/Library"
+libclip() { # relative-path WxH colour seconds
+  local path="$lib/$1"
+  mkdir -p "$(dirname "$path")"
+  ffmpeg -hide_banner -loglevel error -y \
+    -f lavfi -i "color=c=$3:s=$2:r=12:d=$4,format=yuv420p" \
+    -f lavfi -i "sine=frequency=262:sample_rate=48000:d=$4" -af volume=0.03 \
+    -c:v libx264 -preset ultrafast -crf 30 -c:a aac -b:a 48k -shortest "$path"
+}
+libclip "Movies/Harbour Lights (2019)/Harbour Lights (2019) 720p.mp4" 1280x720 0x1b2a41 20
+libclip "Movies/Harbour Lights (2019)/Harbour Lights (2019) 360p.mp4" 640x360 0x1b2a41 20
+libclip "Movies/Night.Drive.2021.mp4" 960x540 0x1b4965 20
+libclip "Movies/Paper Boats (2017).mp4" 960x540 0xd9776b 20
+# Night Shift: three short episodes built like real ones, for intro, credits and autoplay.
+# Each has its own cold open (10, 25 and 4 s), the same 20 s opening (bars and the same
+# sound), its own story, and the same 25 s ending over black from 2:00 to the end at 2:25.
+# Sounds are seeded noise shaped by a rhythm: identical where episodes share a part,
+# different everywhere else.
+episode() { # relative-path colour cold-open-seconds story-seconds seed
+  local path="$lib/$1" colour=$2 cold=$3 story=$4 seed=$5
+  local beat="volume='0.35+0.3*sin(2*PI*1.7*t)*sin(2*PI*0.23*t)':eval=frame"
+  mkdir -p "$(dirname "$path")"
+  ffmpeg -hide_banner -loglevel error -y \
+    -f lavfi -i "color=c=${colour}:s=960x540:r=12:d=${cold}" -f lavfi -i "anoisesrc=d=${cold}:c=pink:r=48000:a=0.4:seed=$((seed+1)),${beat}" \
+    -f lavfi -i "smptehdbars=s=960x540:r=12:d=20" -f lavfi -i "anoisesrc=d=20:c=pink:r=48000:a=0.4:seed=900,${beat}" \
+    -f lavfi -i "gradients=s=960x540:r=12:c0=${colour}:c1=0x1b2a41:speed=0.01:d=${story},format=yuv420p" -f lavfi -i "anoisesrc=d=${story}:c=pink:r=48000:a=0.4:seed=$((seed+2)),${beat}" \
+    -f lavfi -i "color=c=black:s=960x540:r=12:d=25" -f lavfi -i "anoisesrc=d=25:c=brown:r=48000:a=0.4:seed=901,${beat}" \
+    -filter_complex "[0:v]format=yuv420p[v0];[2:v]format=yuv420p[v1];[4:v]format=yuv420p[v2];[6:v]format=yuv420p[v3];[v0][1:a][v1][3:a][v2][5:a][v3][7:a]concat=n=4:v=1:a=1[v][a]" \
+    -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -crf 30 -c:a aac -b:a 128k -movflags +faststart "$path"
+}
+episode "Shows/Night Shift/Season 1/Night Shift S01E01 Pilot.mp4" 0x3e6e7e 10 90 100
+episode "Shows/Night Shift/Season 1/Night Shift S01E02 The Long Hour.mp4" 0x2a1f3d 25 75 200
+episode "Shows/Night Shift/Season 1/Night Shift S01E03.mp4" 0x62b6cb 4 96 300
+libclip "Personal/VID_20240612_181500.mp4" 960x540 0x8fa68a 20
+libclip "Personal/2023-08-14 Beach day.mp4" 960x540 0xe8c39e 20
+libclip "Personal/Untitled Project.mp4" 960x540 0x6b5a45 20
+mkdir -p "$lib/Podcasts/Design Notes"
+ffmpeg -hide_banner -loglevel error -y -f lavfi -i "sine=frequency=196:sample_rate=44100:d=30" -af volume=0.03 \
+  -c:a libmp3lame -b:a 64k "$lib/Podcasts/Design Notes/Design Notes Episode 12.mp3"
+# Ignored by the scanner: a sample clip and a text file.
+libclip "Movies/Harbour Lights (2019)/Sample/sample.mp4" 640x360 0x000000 3
+printf 'notes\n' > "$lib/Movies/notes.txt"
+echo "made the library tree"
+
+ls -laR "$out"

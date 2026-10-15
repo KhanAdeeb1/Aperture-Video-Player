@@ -1,6 +1,6 @@
 # Aperture design system
 
-Status: Milestone 1. Tokens live in [`src/Aperture.App/Theme/Tokens.xaml`](../src/Aperture.App/Theme/Tokens.xaml), component styles in [`Styles.xaml`](../src/Aperture.App/Theme/Styles.xaml), motion durations in [`Motion.cs`](../src/Aperture.App/Theme/Motion.cs). Screens reference token keys only; a raw colour, size or duration in a view is a bug. Change a token here and in the file together.
+Status: Milestone 1, extended in Milestones 3 and 4 (new states use existing tokens only). Tokens live in [`src/Aperture.App/Theme/Tokens.xaml`](../src/Aperture.App/Theme/Tokens.xaml), component styles in [`Styles.xaml`](../src/Aperture.App/Theme/Styles.xaml), motion durations in [`Motion.cs`](../src/Aperture.App/Theme/Motion.cs). Screens reference token keys only; a raw colour, size or duration in a view is a bug. Change a token here and in the file together.
 
 ## 1. Identity in one paragraph
 
@@ -19,6 +19,11 @@ Answered for each state before it was built, as the project rules require.
 | **Playback, controls hidden** | Watch | The video | Everything, including the pointer and caption-button glyphs | Any persistent chrome | Same at every size, including full screen |
 | **Mini-player** | Keep watching while working | The video | Volume, time, More and full-screen buttons | All of the above; only play/pause, timeline and "return" remain | Windows compact-overlay window (always on top, user-resizable) |
 | **Settings** | Change one preference and leave | The setting rows themselves | Clear-history confirmation (a flyout) | Categories pages, search, toggles without behaviour, theme picker (light theme not designed yet) | One reading-width column (640 px), rows instead of nested cards |
+| **Resume or restart (Milestone 3)** | Decide where to start | "Resume" (accent) | The choice only appears when Settings says "Ask each time"; otherwise the remembered default acts silently | A modal dialog over the video | The same small panel as M1's resume notice, bottom left over the paused first frame |
+| **Sync and subtitle look panel (M3)** | Nudge subtitles or sound into sync, or make subtitles readable | The two offset steppers with the current value | Opened from More or G; closes on Esc | Free-form millisecond entry, font pickers, per-track styling | Floating panel top right, 340 px, so the picture and the subtitles being adjusted stay visible |
+| **Shortcuts panel and editor (M3)** | Find or change a key | The key next to each action | Editing lives in Settings; the player panel only lists | Recording macros, per-screen maps | Player panel is two columns centred over the video; editor is a dialog with grouped rows |
+| **Library (M4)** | Find something to watch | The grid of artwork | Scan progress shows only while scanning; corrections live in each card's menu | Ratings, cast, genres, trailers, a sidebar of filters | Kinds as a selector bar with counts, one filter box and a sort; the grid reflows from 1 column at 640 px to many at 4K |
+| **Edit details (M4)** | Correct a wrong or doubtful match | The title field | Season and episode appear only for episodes; a suggestion panel only when there is one | Free-text tags, artwork upload | Dialog, fields in reading order |
 | **Loading, empty, error, unsupported** | Understand what happened and what to do next | One plain sentence | Technical detail stays small and selectable below the message | Stack traces, error codes as headlines, apologetic copy | Centred, max 460 px; the same composition for every message so they read as one family |
 
 ## 3. Tokens
@@ -88,10 +93,13 @@ Screens switch instantly in M1. Nothing loops, floats or animates on its own.
 | `IconButtonStyle`, `VideoIconButtonStyle` | Title bar, transport | Chromeless; quiet fill on hover; system focus visual |
 | `QuietButtonStyle` | "Open", "Start over" | Text button without chrome until hovered |
 | `ApertureButtonStyle`, `ApertureAccentButtonStyle` | Dialog-like actions | WinUI buttons with Aperture's radius and height; at most one accent button per view |
-| `MediaCard` | Home | 16:9 artwork, progress, title, one line of context; hover ring; context menu (Play, Show in folder, Remove from history) |
+| `MediaCard` | Home, Library | 16:9 artwork (poster, Windows thumbnail, or the empty fill), progress, title, one line of context (episode or year, time left or length, quality, number of copies); hover ring; a small "Check details" badge for doubtful matches and a ✓ for watched items; context menu built for the item (Play, Play from the beginning, Play another copy, Mark watched or unwatched, Edit or Check details, Show in folder, Remove from history) |
 | `SettingRowStyle` | Settings | Title, one-line description, control on the right |
 | Status panel | Player errors, Home empty and no-results | Glyph, title, one sentence, optional detail, at most two actions |
 | Aperture mark | Title bar (16 px), first launch (64 px) | Ring plus Lamp dot; drawn with two ellipses, no image asset |
+| Skip button | Player, bottom right above the controls | One `ApertureButtonStyle` button: "Skip intro", "Skip recap" or "Skip credits"; after an automatic skip it reads "Watch the intro" for 5 s. Shown only while the segment plays; never accent, so it does not compete with the video |
+| Next-episode card | Player, bottom right | A 320 px panel on `VideoPanelBrush` (240 px in the mini-player): caption ("Next episode in 8 s", "Next episode"), the episode's number and name, a thin Lamp progress line only while counting, and two buttons, "Play now" (the one accent button) and "Cancel"/"Close". No artwork, no animation beyond the line. Esc, Cancel, Close or pausing stop the countdown |
+| Intro and credits panel | Player side panel (More options › Intro and credits) | Same shape as the info and sync panels: a kind selector, the times in effect and where they came from (found, chapter, your correction), "Starts here" / "Ends here" at the current position, then quiet text buttons: go to the start, "These times are right", "This file has none", "Go back to what was found" |
 
 ## 5. Interaction
 
@@ -102,8 +110,9 @@ Screens switch instantly in M1. Nothing loops, floats or animates on its own.
 | Ctrl+O | Open file | Everywhere |
 | Ctrl+F | Search (goes Home first) | Everywhere |
 | Ctrl+, | Settings | Everywhere |
-| Esc | Leave full screen or mini-player; otherwise clear search, or leave Settings | Everywhere |
-| Alt+Left, Backspace | Back | Player, Settings |
+| Ctrl+L | Library | Everywhere |
+| Esc | Close an open player panel; then leave full screen or mini-player; otherwise clear search, or go back | Everywhere |
+| Alt+Left, Backspace | Back | Player, Library, Settings |
 | Space, K, media Play/Pause key | Play / pause | Player |
 | S, media Stop key | Stop: saves the position, closes the file and returns Home | Player |
 | Left / Right (Shift for 30 s) | Seek 5 s back / forward | Player |
@@ -116,9 +125,20 @@ Screens switch instantly in M1. Nothing loops, floats or animates on its own.
 | C | Next subtitle track (wraps through Off) | Player |
 | A | Next audio track | Player |
 | R | Next picture shape (Original, Fill window, Stretch, 16:9, 4:3, 2.39:1) | Player |
-| ] / [ | Faster / slower (0.25× to 2×) | Player |
+| ] / [ | Faster / slower (0.25, 0.5, 0.75, Normal, 1.25, 1.5, 1.75, 2×) | Player |
 | \\ | Normal speed | Player |
 | I | Playback info panel | Player |
+| , / . | One frame back / forward (pauses) | Player |
+| Z / X | Subtitles 0.1 s earlier / later | Player |
+| Shift+Z / Shift+X | Sound 0.1 s earlier / later | Player |
+| G | Sync and subtitle look panel | Player |
+| ? or F1 | Shortcuts panel | Player |
+| N | Skip the intro, recap or credits on screen | Player |
+| Shift+N, media Next key | Next episode | Player |
+| Shift+P, media Previous key | Previous episode | Player |
+| Mouse wheel over the video | Volume ±5 | Player |
+
+Every player key above is a default: Settings › Keyboard shortcuts changes, adds or removes keys, warns when a key is already used and offers to move it, and refuses keys Windows or Aperture use everywhere. Menus and tooltips show the current key, not the default. Player keys do nothing while a text box has focus, and inside the sync or shortcuts panel only Esc and the panel's own key act.
 
 Space always means play/pause in the player, even when a transport button has focus (Enter activates the focused button). Tab moves through the title bar and then the content in reading order. Focus is drawn with the Windows system focus visual, never a custom ring.
 
@@ -148,6 +168,6 @@ Controls appear on pointer movement, any playback key, or a status change. While
 - High-contrast themes replace every Aperture colour with system colours.
 - Body and caption text meet WCAG AA (4.5 : 1) on their surfaces.
 
-## 6. Deliberately not in Milestone 1
+## 6. Still deliberately left out
 
-Light theme; library sections backed by folder scanning (M6); poster art from metadata (M6–M7); track menus and subtitles (M3); screen transitions; a custom timeline control (WinUI's slider is used, restyled through the accent only).
+Light theme; screen transitions; a custom timeline control (WinUI's slider is used, restyled through the accent only); cast, ratings and genres from online metadata (only the title, year, episode title, a short overview and a poster are used).

@@ -24,6 +24,7 @@ public sealed class ApertureDatabase
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Private,
             Pooling = true,
+            ForeignKeys = true,
         }.ToString();
     }
 
@@ -63,6 +64,13 @@ public sealed class ApertureDatabase
         {
             throw new InvalidOperationException(
                 $"The database at '{DatabasePath}' has schema version {current}, which is newer than this version of Aperture supports ({migrations.Count}).");
+        }
+
+        // Write-ahead logging lets the interface read the library while a scan writes to it.
+        await using (var wal = connection.CreateCommand())
+        {
+            wal.CommandText = "PRAGMA journal_mode = WAL;";
+            await wal.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         if (current == migrations.Count)

@@ -152,17 +152,28 @@ public sealed partial class MediaCard : UserControl
         }
     }
 
-    private void OnArtworkSizeChanged(object sender, SizeChangedEventArgs e)
+    /// <summary>
+    /// Sets the 16:9 artwork height from the card's width before measuring, so the card reports
+    /// its real height in the same pass. Card grids size their rows from that measurement.
+    /// Cards are always given a width (in XAML, or by <see cref="CardGrid"/>).
+    /// </summary>
+    protected override Windows.Foundation.Size MeasureOverride(Windows.Foundation.Size availableSize)
     {
-        var height = Math.Round(e.NewSize.Width * 9 / 16);
-        // Height starts unset (NaN), and NaN never compares as different.
-        if (double.IsNaN(Artwork.Height) || Math.Abs(Artwork.Height - height) > 0.5)
+        var width = double.IsNaN(Width) ? availableSize.Width : Width;
+        if (width > 0 && !double.IsInfinity(width))
         {
-            Artwork.Height = height;
+            var height = Math.Round(width * 9 / 16);
+            // Height starts unset (NaN), and NaN never compares as different.
+            if (double.IsNaN(Artwork.Height) || Math.Abs(Artwork.Height - height) > 0.5)
+            {
+                Artwork.Height = height;
+            }
         }
 
-        UpdateProgressWidth();
+        return base.MeasureOverride(availableSize);
     }
+
+    private void OnArtworkSizeChanged(object sender, SizeChangedEventArgs e) => UpdateProgressWidth();
 
     private void UpdateProgressWidth()
     {

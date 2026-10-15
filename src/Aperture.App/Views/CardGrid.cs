@@ -3,47 +3,69 @@ using Microsoft.UI.Xaml.Controls;
 namespace Aperture.App.Views;
 
 /// <summary>
-/// Keeps a wrapping grid of cards sized to whole columns. A uniform grid measures its first
-/// card at the minimum width and then stretches every card wider without making rows taller,
-/// which cuts off the line under each card's 16:9 artwork. Setting the minimum to the exact
-/// column width means cards are measured at the width they are shown at.
+/// Keeps a wrapping grid of cards sized to whole columns. A uniform grid measures one card and
+/// gives every row that height, then stretches cards wider without re-measuring, which cut off
+/// the line under the 16:9 artwork. Here each card is given the exact column width, so it is
+/// measured at the width it is shown at.
 /// </summary>
-internal static class CardGrid
+internal sealed class CardGrid
 {
+    private readonly ItemsRepeater _repeater;
+    private readonly UniformGridLayout _layout;
+    private readonly double _minimum;
+    private double _column;
+
+    private CardGrid(ItemsRepeater repeater, UniformGridLayout layout)
+    {
+        _repeater = repeater;
+        _layout = layout;
+        _minimum = layout.MinItemWidth;
+        _column = _minimum;
+        repeater.ElementPrepared += (_, e) => e.Element.Width = _column;
+        repeater.SizeChanged += (_, e) =>
+        {
+            // Only width matters; new rows change the height, and reacting to that would loop.
+            if (Math.Abs(e.NewSize.Width - e.PreviousSize.Width) >= 0.5)
+            {
+                // Change the layout after this layout pass rather than during it.
+                repeater.DispatcherQueue.TryEnqueue(Update);
+            }
+        };
+    }
+
     public static void Fit(ItemsRepeater repeater)
     {
-        if (repeater.Layout is not UniformGridLayout layout)
+        if (repeater.Layout is UniformGridLayout layout)
+        {
+            _ = new CardGrid(repeater, layout);
+        }
+    }
+
+    private void Update()
+    {
+        var width = _repeater.ActualWidth;
+        if (width <= 0)
         {
             return;
         }
 
-        var minimum = layout.MinItemWidth;
-        repeater.SizeChanged += (_, e) =>
+        var spacing = _layout.MinColumnSpacing;
+        var columns = Math.Max(1, Math.Floor((width + spacing) / (_minimum + spacing)));
+        var column = Math.Max(_minimum, Math.Floor((width - (spacing * (columns - 1))) / columns));
+        if (Math.Abs(column - _column) < 0.5)
         {
-            // Only width matters; new rows change the height, and reacting to that would loop.
-            var width = e.NewSize.Width;
-            if (width <= 0 || Math.Abs(width - e.PreviousSize.Width) < 0.5)
+            return;
+        }
+
+        _column = column;
+        _layout.MinItemWidth = column;
+        var count = _repeater.ItemsSourceView?.Count ?? 0;
+        for (var i = 0; i < count; i++)
+        {
+            if (_repeater.TryGetElement(i) is { } element)
             {
-                return;
+                element.Width = column;
             }
-
-            // Change the layout after this layout pass rather than during it.
-            repeater.DispatcherQueue.TryEnqueue(() =>
-            {
-                var spacing = layout.MinColumnSpacing;
-                var current = repeater.ActualWidth;
-                if (current <= 0)
-                {
-                    return;
-                }
-
-                var columns = Math.Max(1, Math.Floor((current + spacing) / (minimum + spacing)));
-                var column = Math.Max(minimum, Math.Floor((current - (spacing * (columns - 1))) / columns));
-                if (Math.Abs(layout.MinItemWidth - column) > 0.5)
-                {
-                    layout.MinItemWidth = column;
-                }
-            });
-        };
+        }
     }
 }

@@ -15,7 +15,7 @@ public sealed class SqliteLibraryStore(ApertureDatabase database, TimeProvider? 
         id, folder_id, path, size_bytes, modified_utc, added_utc, missing, category, title, year, season, episode,
         episode_title, air_date, overview, source, confidence, artwork_path, probed, duration_ms, width, height,
         video_codec, fingerprint, match_service, match_id, match_title, match_year, match_episode_title,
-        match_overview, match_artwork_url, match_confidence
+        match_overview, match_artwork_url, match_confidence, episode_end
         """;
 
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -101,9 +101,9 @@ public sealed class SqliteLibraryStore(ApertureDatabase database, TimeProvider? 
         // the name was the source; online and hand-entered details are kept.
         command.CommandText = """
             INSERT INTO library_items (folder_id, path, size_bytes, modified_utc, added_utc, last_seen_utc, missing,
-                category, title, year, season, episode, episode_title, air_date, source, confidence)
+                category, title, year, season, episode, episode_end, episode_title, air_date, source, confidence)
             VALUES ($folder, $path, $size, $modified, $seen, $seen, 0,
-                $category, $title, $year, $season, $episode, $episodeTitle, $date, 'FileName', $confidence)
+                $category, $title, $year, $season, $episode, $episodeEnd, $episodeTitle, $date, 'FileName', $confidence)
             ON CONFLICT (path) DO UPDATE SET
                 folder_id = excluded.folder_id,
                 size_bytes = excluded.size_bytes,
@@ -117,6 +117,7 @@ public sealed class SqliteLibraryStore(ApertureDatabase database, TimeProvider? 
                 year = CASE WHEN library_items.source = 'FileName' THEN excluded.year ELSE library_items.year END,
                 season = CASE WHEN library_items.source = 'FileName' THEN excluded.season ELSE library_items.season END,
                 episode = CASE WHEN library_items.source = 'FileName' THEN excluded.episode ELSE library_items.episode END,
+                episode_end = CASE WHEN library_items.source = 'FileName' THEN excluded.episode_end ELSE library_items.episode_end END,
                 episode_title = CASE WHEN library_items.source = 'FileName' THEN excluded.episode_title ELSE library_items.episode_title END,
                 air_date = CASE WHEN library_items.source = 'FileName' THEN excluded.air_date ELSE library_items.air_date END,
                 confidence = CASE WHEN library_items.source = 'FileName' THEN excluded.confidence ELSE library_items.confidence END;
@@ -131,6 +132,7 @@ public sealed class SqliteLibraryStore(ApertureDatabase database, TimeProvider? 
         var year = command.Parameters.Add("$year", SqliteType.Integer);
         var season = command.Parameters.Add("$season", SqliteType.Integer);
         var episode = command.Parameters.Add("$episode", SqliteType.Integer);
+        var episodeEnd = command.Parameters.Add("$episodeEnd", SqliteType.Integer);
         var episodeTitle = command.Parameters.Add("$episodeTitle", SqliteType.Text);
         var date = command.Parameters.Add("$date", SqliteType.Text);
         var confidence = command.Parameters.Add("$confidence", SqliteType.Text);
@@ -149,6 +151,7 @@ public sealed class SqliteLibraryStore(ApertureDatabase database, TimeProvider? 
             year.Value = (object?)parsed.Year ?? DBNull.Value;
             season.Value = (object?)parsed.Season ?? DBNull.Value;
             episode.Value = (object?)parsed.Episode ?? DBNull.Value;
+            episodeEnd.Value = (object?)parsed.EpisodeEnd ?? DBNull.Value;
             episodeTitle.Value = (object?)parsed.EpisodeTitle ?? DBNull.Value;
             date.Value = (object?)parsed.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? DBNull.Value;
             confidence.Value = parsed.Confidence.ToString();
@@ -274,8 +277,9 @@ public sealed class SqliteLibraryStore(ApertureDatabase database, TimeProvider? 
         return ExecuteAsync(
             """
             UPDATE library_items SET
-                category = $category, title = $title, year = $year, season = $season, episode = $episode,
-                episode_title = $episodeTitle, source = 'Manual', confidence = 'Certain',
+                category = $category, title = $title, year = $year, season = $season,
+                episode_end = CASE WHEN episode IS $episode AND $category = 'Episode' THEN episode_end ELSE NULL END,
+                episode = $episode, episode_title = $episodeTitle, source = 'Manual', confidence = 'Certain',
                 match_service = NULL, match_id = NULL, match_title = NULL, match_year = NULL, match_episode_title = NULL,
                 match_overview = NULL, match_artwork_url = NULL, match_confidence = NULL
             WHERE id = $id;
@@ -295,7 +299,7 @@ public sealed class SqliteLibraryStore(ApertureDatabase database, TimeProvider? 
             """
             UPDATE library_items SET
                 category = $category, title = $title, year = $year, season = $season, episode = $episode,
-                episode_title = $episodeTitle, air_date = $date, overview = NULL, artwork_path = NULL,
+                episode_end = $episodeEnd, episode_title = $episodeTitle, air_date = $date, overview = NULL, artwork_path = NULL,
                 source = 'FileName', confidence = $confidence, looked_up_utc = NULL,
                 match_service = NULL, match_id = NULL, match_title = NULL, match_year = NULL, match_episode_title = NULL,
                 match_overview = NULL, match_artwork_url = NULL, match_confidence = NULL
@@ -303,7 +307,7 @@ public sealed class SqliteLibraryStore(ApertureDatabase database, TimeProvider? 
             """,
             cancellationToken,
             ("$category", parsed.Category.ToString()), ("$title", parsed.Title), ("$year", parsed.Year),
-            ("$season", parsed.Season), ("$episode", parsed.Episode), ("$episodeTitle", parsed.EpisodeTitle),
+            ("$season", parsed.Season), ("$episode", parsed.Episode), ("$episodeEnd", parsed.EpisodeEnd), ("$episodeTitle", parsed.EpisodeTitle),
             ("$date", parsed.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
             ("$confidence", parsed.Confidence.ToString()), ("$id", itemId));
     }
@@ -389,6 +393,7 @@ public sealed class SqliteLibraryStore(ApertureDatabase database, TimeProvider? 
                     Text(29),
                     Text(30),
                     ParseEnum(Text(31) ?? string.Empty, MatchConfidence.Uncertain)),
+            EpisodeEnd = Int(32),
         };
     }
 

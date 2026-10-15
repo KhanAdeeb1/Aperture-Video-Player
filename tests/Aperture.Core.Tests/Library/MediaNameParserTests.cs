@@ -121,4 +121,28 @@ public class MediaNameParserTests
         var parsed = MediaNameParser.Parse("/media/tv/Harbour Watch/Season 1/02.mkv", "/media/tv", LibraryFolderKind.Shows);
         Assert.Equal(("Harbour Watch", 1, 2), (parsed.Title, parsed.Season!.Value, parsed.Episode!.Value));
     }
+
+    [Theory]
+    [InlineData(@"Night.Shift.S01E01E02.720p.mkv", 1, 1, 2)]
+    [InlineData(@"Night.Shift.S01E01-E02.mkv", 1, 1, 2)]
+    [InlineData(@"Night.Shift.S01E01-02.mkv", 1, 1, 2)]
+    [InlineData(@"Night Shift - S02E09E10E11.mkv", 2, 9, 11)]
+    public void Files_holding_several_episodes_record_the_last(string name, int season, int episode, int last)
+    {
+        var parsed = Parse(name);
+        Assert.Equal(MediaCategory.Episode, parsed.Category);
+        Assert.Equal((season, episode, last), (parsed.Season!.Value, parsed.Episode!.Value, parsed.EpisodeEnd!.Value));
+    }
+
+    [Theory]
+    [InlineData(@"Night.Shift.S01E05.mkv")]
+    [InlineData(@"Night.Shift.S01E05-1080p.mkv")]
+    [InlineData(@"Night.Shift.S01E05-2019.mkv")]
+    [InlineData(@"Night.Shift.S01E05-E03.mkv")]
+    public void A_single_episode_has_no_last_episode(string name)
+    {
+        var parsed = Parse(name);
+        Assert.Equal(5, parsed.Episode);
+        Assert.Null(parsed.EpisodeEnd);
+    }
 }

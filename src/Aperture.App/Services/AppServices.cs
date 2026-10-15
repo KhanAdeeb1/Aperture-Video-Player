@@ -1,10 +1,12 @@
 using Aperture.App.Interop;
 using Aperture.Core.Input;
 using Aperture.Core.Library;
+using Aperture.Core.Series;
 using Aperture.Core.Settings;
 using Aperture.Core.Storage;
 using Aperture.Data;
 using Aperture.Media;
+using Aperture.Media.Analysis;
 using Aperture.Playback.Mpv;
 using Aperture.Playback.Mpv.Interop;
 
@@ -31,6 +33,9 @@ internal sealed record AppServices(
     IItemStateStore ItemState,
     ISecretStore Secrets,
     LibraryCoordinator Library,
+    ISeriesStore Series,
+    SeriesState Shows,
+    EpisodeAnalysisCoordinator Analysis,
     LiveSettings Settings,
     ShortcutMap InitialShortcuts)
 {
@@ -71,8 +76,11 @@ internal sealed record AppServices(
                     : null;
 
             var library = new LibraryCoordinator(libraryStore, itemState, history, CreateProbe, Lookup, TimeProvider.System, AppLog.FromEngine);
+            var series = new SqliteSeriesStore(database);
+            var analysisFolder = location.AnalysisDirectory;
+            var analysis = new EpisodeAnalysisCoordinator(series, () => CreateSignalReader(analysisFolder), new AnalysisCache(analysisFolder), TimeProvider.System, AppLog.FromEngine);
             return new StartupResult(
-                new AppServices(location, history, settingsStore, settingsStore, itemState, secrets, library, settings, shortcuts),
+                new AppServices(location, history, settingsStore, settingsStore, itemState, secrets, library, series, new SeriesState(library), analysis, settings, shortcuts),
                 null);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or Microsoft.Data.Sqlite.SqliteException)
@@ -92,6 +100,21 @@ internal sealed record AppServices(
         catch (MpvUnavailableException error)
         {
             AppLog.Warning("Library files can't be inspected because libmpv could not start", error);
+            return null;
+        }
+    }
+
+    /// <summary>Reads episodes for intro and credits detection; without libmpv, nothing is analysed.</summary>
+    private static MpvSignalReader? CreateSignalReader(string workFolder)
+    {
+        try
+        {
+            MpvLibrary.EnsureLoaded();
+            return new MpvSignalReader(workFolder, AppLog.FromEngine);
+        }
+        catch (MpvUnavailableException error)
+        {
+            AppLog.Warning("Intros and credits can't be found because libmpv could not start", error);
             return null;
         }
     }

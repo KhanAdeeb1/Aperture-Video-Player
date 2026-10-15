@@ -3,6 +3,7 @@ using Aperture.App.Services;
 using Aperture.Core.Input;
 using Aperture.Core.Library;
 using Aperture.Core.Playback;
+using Aperture.Core.Series;
 using Aperture.Core.Settings;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -44,6 +45,17 @@ public sealed partial class SettingsView : UserControl
             SubtitleBackgroundBox.Items.Add(new ComboBoxItem { Content = SubtitleStyle.Label(background), Tag = background });
         }
 
+        foreach (var seconds in AppSettings.CountdownChoices)
+        {
+            CountdownBox.Items.Add(new ComboBoxItem { Content = $"{seconds} seconds", Tag = seconds });
+        }
+
+        foreach (var mode in (SkipMode[])[SkipMode.Button, SkipMode.Automatic, SkipMode.Never])
+        {
+            IntroSkipBox.Items.Add(new ComboBoxItem { Content = EpisodeRules.Label(mode), Tag = mode });
+            RecapSkipBox.Items.Add(new ComboBoxItem { Content = EpisodeRules.Label(mode), Tag = mode });
+        }
+
         var version = typeof(SettingsView).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
         var plus = version.IndexOf('+', StringComparison.Ordinal);
         VersionText.Text = $"Aperture {(plus > 0 ? version[..plus] : version)}";
@@ -81,8 +93,14 @@ public sealed partial class SettingsView : UserControl
                 DispatcherQueue.TryEnqueue(async () => await RefreshFoldersAsync());
             }
         };
+        services.Analysis.ProgressChanged += (_, progress) => DispatcherQueue.TryEnqueue(() => ShowAnalysisProgress(progress));
         _ = RefreshFoldersAsync();
     }
+
+    private void ShowAnalysisProgress(Aperture.Media.Analysis.AnalysisProgress? progress) =>
+        FindSegmentsCaption.Text = progress is null
+            ? "Compares episodes of each show by their sound and picture. Files are only read, never changed. When off, only episodes you open are checked."
+            : $"Checking {progress.Current} ({progress.Done + 1} of {progress.Total}). Files are only read, never changed.";
 
     /// <summary>Reloads the folder rows (after adding, removing or scanning).</summary>
     public async Task RefreshFoldersAsync()
@@ -131,6 +149,13 @@ public sealed partial class SettingsView : UserControl
         Select(SubtitleSizeBox, settings.SubtitleStyle.Size);
         Select(SubtitleColorBox, settings.SubtitleStyle.Color);
         Select(SubtitleBackgroundBox, settings.SubtitleStyle.Background);
+        AutoplayToggle.IsOn = settings.AutoplayNextEpisode;
+        Select(CountdownBox, settings.NextEpisodeCountdownSeconds);
+        CountdownBox.IsEnabled = settings.AutoplayNextEpisode;
+        Select(IntroSkipBox, settings.IntroSkip);
+        Select(RecapSkipBox, settings.RecapSkip);
+        CreditsToggle.IsOn = settings.OfferSkipCredits;
+        FindSegmentsToggle.IsOn = settings.FindSegments;
         RememberToggle.IsOn = settings.RememberHistory;
         OnlineToggle.IsOn = settings.OnlineMetadata;
         KeyRow.Visibility = settings.OnlineMetadata ? Visibility.Visible : Visibility.Collapsed;
@@ -160,6 +185,12 @@ public sealed partial class SettingsView : UserControl
                 Selected(SubtitleSizeBox, current.SubtitleStyle.Size),
                 Selected(SubtitleColorBox, current.SubtitleStyle.Color),
                 Selected(SubtitleBackgroundBox, current.SubtitleStyle.Background)),
+            AutoplayNextEpisode = AutoplayToggle.IsOn,
+            NextEpisodeCountdownSeconds = Selected(CountdownBox, current.NextEpisodeCountdownSeconds),
+            IntroSkip = Selected(IntroSkipBox, current.IntroSkip),
+            RecapSkip = Selected(RecapSkipBox, current.RecapSkip),
+            OfferSkipCredits = CreditsToggle.IsOn,
+            FindSegments = FindSegmentsToggle.IsOn,
             RememberHistory = RememberToggle.IsOn,
             OnlineMetadata = OnlineToggle.IsOn,
         };
@@ -169,6 +200,7 @@ public sealed partial class SettingsView : UserControl
         }
 
         KeyRow.Visibility = updated.OnlineMetadata ? Visibility.Visible : Visibility.Collapsed;
+        CountdownBox.IsEnabled = updated.AutoplayNextEpisode;
         _services.Settings.Current = updated;
         try
         {

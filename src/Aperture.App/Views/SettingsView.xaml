@@ -179,6 +179,138 @@
                 </Grid>
             </StackPanel>
 
+            <!-- TV episodes -->
+            <TextBlock
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource SettingGroupHeaderTextStyle}"
+                Text="TV episodes" />
+            <StackPanel Spacing="2">
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Play the next episode automatically" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="After a short countdown that you can cancel. A show can have its own choice, set from the player’s More menu." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="AutoplayToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="AutoplayToggle"
+                        AutomationProperties.Name="Play the next episode automatically"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Countdown" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="How long the next episode waits before it starts." />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="CountdownBox"
+                        Grid.Column="1"
+                        MinWidth="140"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="CountdownBox"
+                        AutomationProperties.Name="Next episode countdown"
+                        SelectionChanged="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Intros" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Skipping automatically only happens when Aperture is sure where the intro is; otherwise you get the button." />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="IntroSkipBox"
+                        Grid.Column="1"
+                        MinWidth="240"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="IntroSkipBox"
+                        AutomationProperties.Name="Intros"
+                        SelectionChanged="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Recaps" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="“Previously on…” at the start of an episode." />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="RecapSkipBox"
+                        Grid.Column="1"
+                        MinWidth="240"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="RecapSkipBox"
+                        AutomationProperties.Name="Recaps"
+                        SelectionChanged="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Offer Skip credits" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="When the credits are followed by more of the episode, Skip credits takes you to it." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="CreditsToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="CreditsToggle"
+                        AutomationProperties.Name="Offer Skip credits"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Find intros and credits in the background" />
+                        <TextBlock
+                            x:Name="FindSegmentsCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Compares episodes of each show by their sound and picture. Files are only read, never changed. When off, only episodes you open are checked." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="FindSegmentsToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="FindSegmentsToggle"
+                        AutomationProperties.Name="Find intros and credits in the background"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnSettingChanged" />
+                </Grid>
+            </StackPanel>
+
             <!-- Library -->
             <TextBlock
                 AutomationProperties.HeadingLevel="Level2"

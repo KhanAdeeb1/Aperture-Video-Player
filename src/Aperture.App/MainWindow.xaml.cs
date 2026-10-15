@@ -53,6 +53,7 @@ public sealed partial class MainWindow : Window
     private Screen _screen = Screen.Home;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _responsiveness;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _homeRefresh;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _showsRefresh;
     private Screen _screenBeforeSettings = Screen.Home;
     private Screen _screenBeforePlayer = Screen.Home;
     private bool _closingSaved;
@@ -76,6 +77,7 @@ public sealed partial class MainWindow : Window
         PlayerPage.SubtitlePickRequested += async (_, _) => await PickSubtitleAsync();
         PlayerPage.OverlayVisibilityChanged += (_, visible) => SetChromeVisible(visible);
         PlayerPage.SubtitleStyleChanged += async (_, style) => await SaveSettingsAsync(s => s with { Subtitles = style });
+        PlayerPage.EpisodeRequested += async (_, path) => await OpenFileAsync(path);
 
         HomePage.PlayRequested += async (_, request) => await OpenFileAsync(request.Path, request.FromStart);
         HomePage.OpenRequested += async (_, _) => await PickAndOpenAsync();
@@ -91,7 +93,11 @@ public sealed partial class MainWindow : Window
             HomePage.Initialize(services, _thumbnails);
             LibraryPage.Initialize(services, _thumbnails);
             SettingsPage.Initialize(services, () => _shortcuts, _engine?.SupportsSubtitleBox ?? true);
-            SettingsPage.SettingsChanged += (_, settings) => PlayerPage.ApplySettings(settings);
+            SettingsPage.SettingsChanged += (_, settings) =>
+            {
+                PlayerPage.ApplySettings(settings);
+                services.Analysis.Update(services.Shows.Catalog, settings.FindSegments);
+            };
             SettingsPage.ShortcutsChanged += (_, map) =>
             {
                 _shortcuts = map;
@@ -99,10 +105,15 @@ public sealed partial class MainWindow : Window
             };
             SettingsPage.HistoryCleared += (_, _) => _thumbnails.Clear();
             SettingsPage.AddFolderRequested += async (_, _) => await AddLibraryFolderAsync();
-            services.Library.Changed += (_, _) => DispatcherQueue.TryEnqueue(ScheduleHomeRefresh);
+            services.Library.Changed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+            {
+                ScheduleHomeRefresh();
+                ScheduleShowsRefresh(TimeSpan.FromSeconds(2));
+            });
             services.Library.Notice += (_, notice) => DispatcherQueue.TryEnqueue(() => SettingsPage.ShowFolderMessage(notice));
             _ = HomePage.RefreshAsync();
             StartLaunchScan(services);
+            ScheduleShowsRefresh(LaunchScanDelay + TimeSpan.FromSeconds(2));
         }
         else
         {
@@ -412,6 +423,40 @@ public sealed partial class MainWindow : Window
 
         _homeRefresh.Stop();
         _homeRefresh.Start();
+    }
+
+    /// <summary>
+    /// Rebuilds the shows after the library changed (episode order, next and previous) and
+    /// queues intro and credits analysis for what is new. Waits for changes to settle first.
+    /// </summary>
+    private void ScheduleShowsRefresh(TimeSpan delay)
+    {
+        if (_services is not { } services)
+        {
+            return;
+        }
+
+        if (_showsRefresh is null)
+        {
+            _showsRefresh = DispatcherQueue.CreateTimer();
+            _showsRefresh.IsRepeating = false;
+            _showsRefresh.Tick += async (_, _) =>
+            {
+                try
+                {
+                    var catalog = await services.Shows.RefreshAsync();
+                    services.Analysis.Update(catalog, services.Settings.Current.FindSegments);
+                }
+                catch (System.Data.Common.DbException error)
+                {
+                    AppLog.Error("Could not read the library's shows", error);
+                }
+            };
+        }
+
+        _showsRefresh.Stop();
+        _showsRefresh.Interval = delay;
+        _showsRefresh.Start();
     }
 
     private async void OnBackRequested(TitleBar sender, object args) => await GoBackAsync();
@@ -990,6 +1035,7 @@ public sealed partial class MainWindow : Window
 
         // A running scan stops here; everything it found is already saved and the next scan resumes.
         _services?.Library.Dispose();
+        _services?.Analysis.Dispose();
 
         // Fixed order: the panel lets go of the swap chain, the video thread frees libmpv's
         // render context, and only then is libmpv itself destroyed.

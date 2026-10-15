@@ -19,7 +19,7 @@ public class ApertureDatabaseTests
             tables.Add(reader.GetString(0));
         }
 
-        Assert.Equal(["item_state", "library_folders", "library_items", "playback_history", "settings"], tables);
+        Assert.Equal(["episode_analysis", "item_state", "library_folders", "library_items", "media_segments", "playback_history", "segment_corrections", "series_preferences", "settings"], tables);
     }
 
     [Fact]

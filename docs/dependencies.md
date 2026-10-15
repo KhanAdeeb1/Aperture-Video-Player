@@ -2,9 +2,9 @@
 
 Every dependency must appear here with its license and the reason it is needed before it is added to `Directory.Packages.props` or `third_party/`. "Checked" means the fact was looked up on the date shown; it is not legal advice.
 
-## In use (Milestones 2 to 4)
+## In use (Milestones 2 to 5)
 
-Milestones 3 and 4 added no packages and no native libraries. Library scanning reuses libmpv headless instead of adding FFprobe, the TMDB key is stored with Windows Credential Manager through four `advapi32` functions called directly (`CredReadW`, `CredWriteW`, `CredDeleteW`, `CredFree`), and TMDB is reached with .NET's own `HttpClient`.
+Milestones 3, 4 and 5 added no packages and no native libraries. Milestone 5 reads sound, dark pictures and chapters for intro and credits detection with the libmpv already in use (its `ao=pcm` output and FFmpeg's `blackdetect` filter), and computes the audio fingerprint in Aperture's own code instead of adding Chromaprint. The engine test project now also references `Aperture.Media`, which is Aperture's own code. Library scanning reuses libmpv headless instead of adding FFprobe, the TMDB key is stored with Windows Credential Manager through four `advapi32` functions called directly (`CredReadW`, `CredWriteW`, `CredDeleteW`, `CredFree`), and TMDB is reached with .NET's own `HttpClient`.
 
 | Dependency | Version | License | Why | Notes |
 |---|---|---|---|---|

@@ -247,6 +247,9 @@ public sealed class ShortcutMap
             [PlayerCommand.PlaybackInfo] = [L('I')],
             [PlayerCommand.Adjustments] = [L('G')],
             [PlayerCommand.Shortcuts] = [K(Slash, KeyModifiers.Shift), K(F1)],
+            [PlayerCommand.SkipSegment] = [L('N')],
+            [PlayerCommand.NextEpisode] = [L('N', KeyModifiers.Shift), K(MediaNext)],
+            [PlayerCommand.PreviousEpisode] = [L('P', KeyModifiers.Shift), K(MediaPrevious)],
         };
     }
 }

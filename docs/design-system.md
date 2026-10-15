@@ -97,6 +97,9 @@ Screens switch instantly in M1. Nothing loops, floats or animates on its own.
 | `SettingRowStyle` | Settings | Title, one-line description, control on the right |
 | Status panel | Player errors, Home empty and no-results | Glyph, title, one sentence, optional detail, at most two actions |
 | Aperture mark | Title bar (16 px), first launch (64 px) | Ring plus Lamp dot; drawn with two ellipses, no image asset |
+| Skip button | Player, bottom right above the controls | One `ApertureButtonStyle` button: "Skip intro", "Skip recap" or "Skip credits"; after an automatic skip it reads "Watch the intro" for 5 s. Shown only while the segment plays; never accent, so it does not compete with the video |
+| Next-episode card | Player, bottom right | A 320 px panel on `VideoPanelBrush` (240 px in the mini-player): caption ("Next episode in 8 s", "Next episode"), the episode's number and name, a thin Lamp progress line only while counting, and two buttons, "Play now" (the one accent button) and "Cancel"/"Close". No artwork, no animation beyond the line. Esc, Cancel, Close or pausing stop the countdown |
+| Intro and credits panel | Player side panel (More options › Intro and credits) | Same shape as the info and sync panels: a kind selector, the times in effect and where they came from (found, chapter, your correction), "Starts here" / "Ends here" at the current position, then quiet text buttons: go to the start, "These times are right", "This file has none", "Go back to what was found" |
 
 ## 5. Interaction
 
@@ -130,6 +133,9 @@ Screens switch instantly in M1. Nothing loops, floats or animates on its own.
 | Shift+Z / Shift+X | Sound 0.1 s earlier / later | Player |
 | G | Sync and subtitle look panel | Player |
 | ? or F1 | Shortcuts panel | Player |
+| N | Skip the intro, recap or credits on screen | Player |
+| Shift+N, media Next key | Next episode | Player |
+| Shift+P, media Previous key | Previous episode | Player |
 | Mouse wheel over the video | Volume ±5 | Player |
 
 Every player key above is a default: Settings › Keyboard shortcuts changes, adds or removes keys, warns when a key is already used and offers to move it, and refuses keys Windows or Aperture use everywhere. Menus and tooltips show the current key, not the default. Player keys do nothing while a text box has focus, and inside the sync or shortcuts panel only Esc and the panel's own key act.

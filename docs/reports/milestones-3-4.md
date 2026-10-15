@@ -43,7 +43,7 @@ Date: 2026-10-15
 
 ## 2. Files changed
 
-86 files changed relative to `claude/milestone-0-audit-84kzf1` (which contains Milestone 2).
+90 files changed relative to `claude/milestone-0-audit-84kzf1` (which contains Milestone 2).
 
 | Area | Files | Responsibility |
 |---|---|---|
@@ -60,11 +60,36 @@ Date: 2026-10-15
 
 ## 3. Verification
 
-VERIFICATION_PLACEHOLDER
+All results below come from runs, not expectations.
+
+| Check | Where | Result |
+|---|---|---|
+| Core tests (shortcut map, key chords, sync offsets, speed presets, name parser, copy groups, folder rules, library queries, window placement) | Ubuntu and Windows CI, and locally | 195 passed, 0 failed |
+| Data tests (migration 2, library and item-state stores, upgrade of a Milestone 1 database with backup, refusal of a newer database) | Ubuntu and Windows CI, and locally | 22 passed, 0 failed |
+| Library tests, new project (scanner on real temporary folders: read-only access, hidden and system files, samples, links, cancel and resume, rescans, missing files; coordinator; TMDB provider against a fake server: off, offline, rejected key, confident and doubtful matches; poster cache) | Ubuntu and Windows CI, and locally | 33 passed, 0 failed |
+| Engine tests with real libmpv (every test format plays, seeks, pauses and ends; sync offsets apply and reset; subtitle style applies; tracks switch; headless library probe inspects files) | Ubuntu and Windows CI | All passed. Locally 11 passed and 25 skipped, because this machine has no libmpv |
+| Windows app build, x64 and ARM64, warnings as errors | Windows CI | Succeeded, 0 warnings |
+| Visual review (drives the real app through Windows UI Automation) | Windows CI | All steps passed; details in section 4 |
+
+The visual review now also checks, with assertions rather than only screenshots: three presses of X move subtitles by 0.3 s; the real Windows folder picker hands the test library to Aperture; the first scan finds all 10 grouped items (11 files, with Harbour Lights' two copies on one card); scanning again keeps 10; searching "night" narrows the grid to 4; Esc clears the search and stays on the library; the "Check details" item opens Edit details and Esc closes it; the library is the same 10 items after a restart; and Aperture's log contains no unhandled exception.
 
 ## 4. Visual review
 
-VISUAL_PLACEHOLDER
+Screenshots are on the `ci/visual-review` branch (numbers below are file names).
+
+**Checked against the design-review questions and found right:** the sync and subtitle panel (48) sits top right and leaves the subtitles visible; the shortcuts panel (49) and shortcut editor (50) use the type scale and spacing tokens; first launch (01) offers Open and Add a library folder; the empty library (60) has one clear action; the kind question (61) is short; the library (63) shows counts per kind, "2 copies" and "720p" on Harbour Lights, episode lines such as "S1 E2 · The Long Hour", and a quiet "Check details" tag on Untitled Project; the card menu (66) offers only what applies; Edit details (67) explains why it is asking; the resume choice (35) shows the saved frame with Resume and Start over.
+
+**Problems the review found, all fixed in this PR:**
+
+- A file opened paused ("Ask each time") showed 0:00 on the timeline until played. The timeline now updates when paused.
+- Leaving full screen or the mini-player could crash (an unhandled error reading the display list). Fixed and covered by the run.
+- Cards with no picture (podcasts, files Windows can't preview) collapsed to the height of their title instead of a 16:9 tile.
+- At some window widths, card grids widened cards without making rows taller, cutting off the detail line (65). Rows now grow with the cards.
+- While a scan was finishing, the library briefly said "Last scan didn't finish". It now says nothing until the refreshed state is shown.
+- Esc in Edit details closed the library behind the dialog and left the dialog open on Home. Window shortcuts now stand aside while a dialog is open.
+- The library grid was invisible to screen readers and UI Automation (the repeater has no accessibility peer). It is now exposed as "Library items".
+
+**Not changed, noted:** the shortcuts panel writes the question-mark key as "Shift+/" (accurate, but "?" would read better); a card focused by automation near the bottom edge opens its menu above itself rather than scrolling first.
 
 ## 5. Known limitations
 
@@ -79,7 +104,10 @@ VISUAL_PLACEHOLDER
 
 ## 6. Regression check
 
-REGRESSION_PLACEHOLDER
+- Every Milestone 1 and 2 visual-review step still runs and passes in the same run: first launch, opening files, the seven sample films playing with the position advancing, the playback states, mini-player, full screen, Home at three widths, search, settings, the three error screens, the GPU and software render paths (colour bars checked by pixel, including after a resize and in full screen), FFV1, tracks, subtitles, playback info, picture shape and speed.
+- History and settings from a Milestone 1 database survive the upgrade to migration 2, and a backup is made first (Data test `A_milestone_1_database_upgrades_keeping_history_and_settings_with_a_backup`).
+- Home still shows Continue watching first, with the library rows added below it; files opened outside a library folder still appear in Recently played.
+- The render path is unchanged from Milestone 2.
 
 ## 7. Next step
 

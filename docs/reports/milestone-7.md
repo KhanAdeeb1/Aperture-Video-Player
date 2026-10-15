@@ -79,7 +79,7 @@ The visual-review job's new Media server step drives the real Windows app: Setti
 | ![Before starting](milestone-7/90-settings-media-server.jpg) | ![Running](milestone-7/91-settings-media-server-running.jpg) |
 | Settings › Media server before starting: Start is the accent button | Running: the address to open on a phone and the certificate fingerprint |
 
-The first Windows run showed the fingerprint cut off at the edge of its row, since it has no spaces to wrap at. It now has its own label and shows as two monospaced lines, so it can be compared with the phone in full; the screenshots above were taken before that fix.
+The first Windows run showed the fingerprint cut off at the edge of its row, since it has no spaces to wrap at. It now has its own label and shows as two monospaced lines, so it can be compared with the phone in full, as the second screenshot (from the run after the fix) shows.
 
 ## 5. Known limitations
 

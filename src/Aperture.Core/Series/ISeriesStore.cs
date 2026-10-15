@@ -46,6 +46,12 @@ public interface ISeriesStore
     Task<SeriesPreferences> GetPreferencesAsync(string seriesKey, CancellationToken cancellationToken = default);
 
     Task SavePreferencesAsync(string seriesKey, SeriesPreferences preferences, CancellationToken cancellationToken = default);
+
+    /// <summary>The languages, speed and sound last picked while watching the show.</summary>
+    Task<ShowChoices> GetShowChoicesAsync(string seriesKey, CancellationToken cancellationToken = default);
+
+    /// <summary>Replaces what is carried between the show's episodes; <see cref="ShowChoices.None"/> forgets it.</summary>
+    Task SaveShowChoicesAsync(string seriesKey, ShowChoices choices, CancellationToken cancellationToken = default);
 }
 
 /// <summary>A stretch of a file.</summary>

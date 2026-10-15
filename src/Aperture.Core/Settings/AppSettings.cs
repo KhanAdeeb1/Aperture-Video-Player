@@ -20,6 +20,8 @@ namespace Aperture.Core.Settings;
 /// <param name="FindSegments">Compare episodes in the background to find intros, recaps and credits.</param>
 /// <param name="YouTubeAutoplay">Play the next video in a YouTube list when one ends (separate from episode autoplay).</param>
 /// <param name="YouTubeAccepted">The user agreed to YouTube's Terms of Service and the privacy notes before using the YouTube section.</param>
+/// <param name="Sound">Sound processing for every video unless a show or file says otherwise (both off by default).</param>
+/// <param name="SeekPreviews">Show a picture of the video when pointing at the timeline.</param>
 public sealed record AppSettings(
     ResumeMode Resume,
     bool RememberHistory,
@@ -36,7 +38,9 @@ public sealed record AppSettings(
     bool OfferSkipCredits = true,
     bool FindSegments = true,
     bool YouTubeAutoplay = false,
-    bool YouTubeAccepted = false)
+    bool YouTubeAccepted = false,
+    SoundOptions? Sound = null,
+    bool SeekPreviews = true)
 {
     /// <summary>The choices offered for <see cref="ControlsHideDelaySeconds"/>.</summary>
     public static IReadOnlyList<int> HideDelayChoices { get; } = [2, 3, 5, 10];
@@ -52,6 +56,9 @@ public sealed record AppSettings(
 
     /// <summary>Subtitle style, never null.</summary>
     public SubtitleStyle SubtitleStyle => Subtitles ?? SubtitleStyle.Default;
+
+    /// <summary>Sound options, never null.</summary>
+    public SoundOptions SoundDefaults => Sound ?? SoundOptions.Off;
 
     /// <summary>Returns a copy with out-of-range values replaced by defaults.</summary>
     public AppSettings Normalized() => this with

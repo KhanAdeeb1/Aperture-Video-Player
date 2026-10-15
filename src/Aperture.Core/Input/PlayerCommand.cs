@@ -36,6 +36,11 @@ public enum PlayerCommand
     SkipSegment,
     NextEpisode,
     PreviousEpisode,
+    AddBookmark,
+    Bookmarks,
+    LoopSection,
+    ClearDialogue,
+    EvenVolume,
 }
 
 /// <summary>Groups commands for the shortcut list, in the order they are shown.</summary>
@@ -90,6 +95,11 @@ public static class PlayerCommands
         PlayerCommand.SkipSegment => "Skip intro, recap or credits",
         PlayerCommand.NextEpisode => "Next episode",
         PlayerCommand.PreviousEpisode => "Previous episode",
+        PlayerCommand.AddBookmark => "Bookmark this moment",
+        PlayerCommand.Bookmarks => "Bookmarks and notes",
+        PlayerCommand.LoopSection => "Loop a section (start, end, stop)",
+        PlayerCommand.ClearDialogue => "Clearer dialogue on or off",
+        PlayerCommand.EvenVolume => "Even volume on or off",
         _ => throw new ArgumentOutOfRangeException(nameof(command), command, null),
     };
 
@@ -101,9 +111,11 @@ public static class PlayerCommands
             or PlayerCommand.PreviousEpisode => CommandGroup.Playback,
         PlayerCommand.SeekBack or PlayerCommand.SeekForward or PlayerCommand.SeekBackLong or PlayerCommand.SeekForwardLong
             or PlayerCommand.JumpBack or PlayerCommand.JumpForward or PlayerCommand.GoToStart or PlayerCommand.GoToEnd
-            or PlayerCommand.FrameBack or PlayerCommand.FrameForward => CommandGroup.Seeking,
+            or PlayerCommand.FrameBack or PlayerCommand.FrameForward or PlayerCommand.AddBookmark or PlayerCommand.Bookmarks
+            or PlayerCommand.LoopSection => CommandGroup.Seeking,
         PlayerCommand.VolumeUp or PlayerCommand.VolumeDown or PlayerCommand.Mute or PlayerCommand.NextAudio
-            or PlayerCommand.AudioEarlier or PlayerCommand.AudioLater => CommandGroup.Sound,
+            or PlayerCommand.AudioEarlier or PlayerCommand.AudioLater or PlayerCommand.ClearDialogue
+            or PlayerCommand.EvenVolume => CommandGroup.Sound,
         PlayerCommand.NextSubtitle or PlayerCommand.SubtitlesEarlier or PlayerCommand.SubtitlesLater => CommandGroup.Subtitles,
         _ => CommandGroup.PictureAndWindow,
     };

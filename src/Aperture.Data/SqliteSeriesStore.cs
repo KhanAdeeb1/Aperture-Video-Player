@@ -1,3 +1,4 @@
+using Aperture.Core.Playback;
 using Aperture.Core.Series;
 using Microsoft.Data.Sqlite;
 
@@ -201,6 +202,62 @@ public sealed class SqliteSeriesStore(ApertureDatabase database, TimeProvider? c
             ("$autoplay", preferences.Autoplay is { } on ? (on ? 1 : 0) : null),
             ("$intro", preferences.Intro?.ToString()),
             ("$recap", preferences.Recap?.ToString())).ConfigureAwait(false);
+    }
+
+    public async Task<ShowChoices> GetShowChoicesAsync(string seriesKey, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(seriesKey);
+        await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT audio_language, subtitle_language, subtitles_off, speed, clear_dialogue, even_volume
+            FROM show_choices WHERE series_key = $key;
+            """;
+        command.Parameters.AddWithValue("$key", seriesKey);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return ShowChoices.None;
+        }
+
+        return new ShowChoices(
+            AudioLanguage: reader.IsDBNull(0) ? null : reader.GetString(0),
+            SubtitleLanguage: reader.IsDBNull(1) ? null : reader.GetString(1),
+            SubtitlesOff: reader.GetInt64(2) != 0,
+            Speed: reader.IsDBNull(3) ? null : Math.Clamp(reader.GetDouble(3), 0.25, 4),
+            Sound: reader.IsDBNull(4) && reader.IsDBNull(5) ? null : new SoundOptions(!reader.IsDBNull(4) && reader.GetInt64(4) != 0, !reader.IsDBNull(5) && reader.GetInt64(5) != 0));
+    }
+
+    public async Task SaveShowChoicesAsync(string seriesKey, ShowChoices choices, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(seriesKey);
+        ArgumentNullException.ThrowIfNull(choices);
+        await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
+        if (choices == ShowChoices.None)
+        {
+            await ExecuteAsync(connection, null, "DELETE FROM show_choices WHERE series_key = $key;", cancellationToken, ("$key", seriesKey)).ConfigureAwait(false);
+            return;
+        }
+
+        await ExecuteAsync(
+            connection,
+            null,
+            """
+            INSERT INTO show_choices (series_key, audio_language, subtitle_language, subtitles_off, speed, clear_dialogue, even_volume)
+            VALUES ($key, $audio, $subtitle, $off, $speed, $dialogue, $even)
+            ON CONFLICT (series_key) DO UPDATE SET
+                audio_language = excluded.audio_language, subtitle_language = excluded.subtitle_language,
+                subtitles_off = excluded.subtitles_off, speed = excluded.speed,
+                clear_dialogue = excluded.clear_dialogue, even_volume = excluded.even_volume;
+            """,
+            cancellationToken,
+            ("$key", seriesKey),
+            ("$audio", choices.AudioLanguage),
+            ("$subtitle", choices.SubtitleLanguage),
+            ("$off", choices.SubtitlesOff ? 1 : 0),
+            ("$speed", choices.Speed),
+            ("$dialogue", choices.Sound is { } sound ? (sound.ClearDialogue ? 1 : 0) : null),
+            ("$even", choices.Sound is { } chosen ? (chosen.EvenVolume ? 1 : 0) : null)).ConfigureAwait(false);
     }
 
     private static SkipMode? Mode(SqliteDataReader reader, int column) =>

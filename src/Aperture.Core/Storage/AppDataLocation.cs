@@ -25,6 +25,9 @@ public sealed class AppDataLocation
     /// <summary>Folder for rolling log files.</summary>
     public string LogsDirectory => Path.Combine(Root, "Logs");
 
+    /// <summary>Artwork downloaded for library items (only when online details are turned on).</summary>
+    public string ArtworkDirectory => Path.Combine(Root, "Artwork");
+
     /// <summary>
     /// Resolves the data folder from the override variable when set, otherwise
     /// from the user's local application data folder (%LOCALAPPDATA%\Aperture on Windows).

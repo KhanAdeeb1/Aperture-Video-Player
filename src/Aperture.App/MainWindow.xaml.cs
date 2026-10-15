@@ -796,10 +796,13 @@ public sealed partial class MainWindow : Window
         }
 
         var bounds = new PixelRect(saved.X, saved.Y, saved.Width, saved.Height);
+        // FindAll's list cannot be enumerated with foreach (its projection has no IIterable
+        // behind it, so GetEnumerator throws); index into it instead.
         var areas = new List<PixelRect>();
-        foreach (var display in DisplayArea.FindAll())
+        var displays = DisplayArea.FindAll();
+        for (var i = 0; i < displays.Count; i++)
         {
-            var area = display.WorkArea;
+            var area = displays[i].WorkArea;
             areas.Add(new PixelRect(area.X, area.Y, area.Width, area.Height));
         }
 

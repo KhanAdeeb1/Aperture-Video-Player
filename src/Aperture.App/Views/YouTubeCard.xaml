@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    A YouTube video: YouTube's own 16:9 thumbnail, unaltered, with Aperture's progress line
+    when it was left part-way here; the title and channel exactly as YouTube gives them.
+    Same proportions, hover ring and focus as the library's MediaCard, so both read as one
+    system. Right-click or Shift+F10 opens its actions.
+-->
+<UserControl
+    x:Class="Aperture.App.Views.YouTubeCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Button
+        x:Name="CardButton"
+        AutomationProperties.AutomationId="YouTubeCard"
+        Click="OnInvoke"
+        PointerCanceled="OnPointerExited"
+        PointerEntered="OnPointerEntered"
+        PointerExited="OnPointerExited"
+        Style="{StaticResource CardButtonStyle}">
+        <Button.ContextFlyout>
+            <MenuFlyout x:Name="CardMenu" Opening="OnMenuOpening" />
+        </Button.ContextFlyout>
+
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="HoverStates">
+                <VisualState x:Name="Rest" />
+                <VisualState x:Name="Hover">
+                    <VisualState.Setters>
+                        <Setter Target="HoverRing.Opacity" Value="1" />
+                        <Setter Target="TitleText.Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <StackPanel>
+            <Grid
+                x:Name="Artwork"
+                Background="{ThemeResource ArtworkEmptyBrush}"
+                CornerRadius="{StaticResource RadiusMedium}">
+                <Image x:Name="Thumbnail" Stretch="UniformToFill" />
+                <Border
+                    x:Name="LengthTag"
+                    Margin="8"
+                    Padding="6,1,6,2"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Background="{ThemeResource VideoPanelBrush}"
+                    CornerRadius="{StaticResource RadiusSmall}"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        x:Name="LengthText"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource CaptionTextStyle}" />
+                </Border>
+                <Border
+                    x:Name="ProgressScrim"
+                    Background="{ThemeResource ArtworkScrimBrush}"
+                    Visibility="Collapsed" />
+                <Grid
+                    x:Name="ProgressTrack"
+                    Height="{StaticResource ProgressThickness}"
+                    Margin="12,0,12,12"
+                    VerticalAlignment="Bottom"
+                    Background="{ThemeResource VideoTrackBrush}"
+                    CornerRadius="2"
+                    SizeChanged="OnProgressTrackSizeChanged"
+                    Visibility="Collapsed">
+                    <Border
+                        x:Name="ProgressFill"
+                        HorizontalAlignment="Left"
+                        Background="{ThemeResource AccentBrush}"
+                        CornerRadius="2" />
+                </Grid>
+                <Border
+                    BorderBrush="{ThemeResource StrokeSubtleBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource RadiusMedium}" />
+                <Border
+                    x:Name="HoverRing"
+                    BorderBrush="{ThemeResource StrokeHoverBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource RadiusMedium}"
+                    Opacity="0">
+                    <Border.OpacityTransition>
+                        <ScalarTransition Duration="0:0:0.12" />
+                    </Border.OpacityTransition>
+                </Border>
+            </Grid>
+            <TextBlock
+                x:Name="TitleText"
+                Margin="0,10,0,0"
+                Foreground="{ThemeResource TextSecondaryBrush}"
+                Style="{StaticResource CardTitleTextStyle}" />
+            <TextBlock
+                x:Name="MetaText"
+                Margin="0,2,0,0"
+                Style="{StaticResource CardMetaTextStyle}" />
+        </StackPanel>
+    </Button>
+</UserControl>

@@ -163,6 +163,36 @@ function Write-CrashDetails {
     Get-WinEvent -LogName Application -MaxEvents 10 -ErrorAction SilentlyContinue |
         Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error' } |
         ForEach-Object { Write-Host "  event: $($_.Message)" }
+    Write-DumpAnalysis
+}
+
+# A crash inside WinUI (exception 0xc000027b) never reaches Aperture's own handler or log, and
+# the event log names only the module. Windows Error Reporting keeps a dump of such a crash,
+# and the debugger's analysis of it names the stowed exception (HRESULT, message and stack).
+$dumpDir = Join-Path $OutDir 'dumps'
+New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+try {
+    $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\Aperture.exe'
+    New-Item -Path $key -Force | Out-Null
+    Set-ItemProperty -Path $key -Name DumpFolder -Value $dumpDir -Type ExpandString
+    Set-ItemProperty -Path $key -Name DumpType -Value 2 -Type DWord
+    Set-ItemProperty -Path $key -Name DumpCount -Value 3 -Type DWord
+} catch { Write-Host "Crash dumps not enabled: $($_.Exception.Message)" }
+
+function Write-DumpAnalysis {
+    Start-Sleep -Seconds 5  # Windows Error Reporting writes the dump after the process is gone.
+    $dump = Get-ChildItem $dumpDir -Filter *.dmp -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $dump) { Write-Host '  no crash dump'; return }
+    $cdb = @("${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64\cdb.exe", "$env:ProgramFiles\Windows Kits\10\Debuggers\x64\cdb.exe") |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $cdb) { Write-Host "  crash dump $($dump.Name) written, but no debugger to read it" }
+    else {
+        $analysis = & $cdb -z $dump.FullName -c '.symfix; .reload; !analyze -v; q' 2>&1 | Out-String
+        $analysis | Set-Content (Join-Path $OutDir "crash-$($dump.BaseName).txt")
+        $analysis -split "`n" | Select-String -Pattern 'STOWED|Stowed|HRESULT|ExceptionCode|EXCEPTION_|ERROR_CODE|Message|SYMBOL_NAME|FAILURE_BUCKET|STACK_TEXT|!' |
+            Select-Object -First 80 | ForEach-Object { Write-Host "  dump: $($_.Line.TrimEnd())" }
+    }
+    Remove-Item $dump.FullName -Force -ErrorAction SilentlyContinue
 }
 
 function Step([string] $name, [scriptblock] $body) {
@@ -781,6 +811,123 @@ Step 'Resume choice' {
     Find-Element $p 'ResumeButton' | Out-Null
     Move-MouseAway
     Save-Shot $p '35-resume-choice'
+    Stop-Aperture $p
+}
+
+# YouTube needs the network; GitHub's Windows runners have it. No API key is configured,
+# so this covers the keyless path: consent, pasting a link, the embedded player (oEmbed
+# for details), saving, the unavailable-video panel and the settings group.
+function Wait-Log([string] $text, [int] $seconds) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        if ((Get-LogText).Contains($text)) { return $true }
+        Start-Sleep -Milliseconds 500
+    }
+    return $false
+}
+
+# Types a link into the title bar's search box and submits it. The box is focused through UI
+# Automation and its text checked before Enter, so a keystroke lost to another window shows up
+# as a clear failure here rather than as a player that never answers.
+function Open-YouTubeLink($p, [string] $url) {
+    # The AutoSuggestBox itself takes no focus; its text field does.
+    $box = Find-Element $p 'SearchBox'
+    $field = $box.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+    if (-not $field) { throw 'the search box has no text field' }
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        [Win]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+        $field.SetFocus()
+        Start-Sleep -Milliseconds 400
+        [System.Windows.Forms.SendKeys]::SendWait('^a{BACKSPACE}' + $url)
+        Start-Sleep -Milliseconds 400
+        $value = $null
+        if ($field.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref] $value) -and $value.Current.Value -eq $url) {
+            [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+            return
+        }
+        Note "Search box held '$($value.Current.Value)' instead of the link (attempt $attempt)"
+    }
+    throw 'the link could not be typed into the search box'
+}
+
+Step 'YouTube' {
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Invoke-Element (Find-Element $p 'YouTubeButton')
+    Find-Element $p 'YouTubeAcceptButton' | Out-Null
+    Move-MouseAway
+    Save-Shot $p '80-youtube-consent'
+
+    Invoke-Element (Find-Element $p 'YouTubeAcceptButton')
+    Find-Element $p 'YouTubeNotice' | Out-Null
+    Save-Shot $p '81-youtube-no-key'
+
+    Open-YouTubeLink $p 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
+    # YouTube decides whether it serves a video to a cloud machine. Either outcome proves the
+    # embed works end to end (page, IFrame API, events back to Aperture): it plays, or YouTube's
+    # player reports an error, which Aperture must explain in place of the player.
+    $deadline = (Get-Date).AddSeconds(60)
+    $outcome = $null
+    while (-not $outcome -and (Get-Date) -lt $deadline) {
+        $text = Get-LogText
+        if ($text.Contains('YouTube player: playing.')) { $outcome = 'playing' }
+        elseif ($text -match 'YouTube player error (\d+)') { $outcome = "error $($Matches[1])" }
+        else { Start-Sleep -Milliseconds 500 }
+    }
+    if (-not $outcome) {
+        Save-Shot $p '82-youtube-player-failed'
+        throw 'the YouTube player neither played nor reported an error'
+    }
+    Start-Sleep -Seconds 3
+    Move-MouseAway
+    if ($outcome -eq 'playing') {
+        Note 'YouTube: the video played in the embedded player'
+        Save-Shot $p '82-youtube-player'
+        # Nothing Aperture draws may cover the embedded player while it plays.
+        foreach ($id in 'YouTubeProblemTitle', 'YouTubeNextCaption') {
+            $over = $null
+            try { $over = Find-Element $p $id 1 } catch { }
+            if ($over -and -not $over.Current.IsOffscreen) { throw "'$id' is showing over the player" }
+        }
+    } else {
+        $refused = Find-Element $p 'YouTubeProblemTitle' 5
+        Note "YouTube: playback NOT confirmed; YouTube's player refused this machine ($outcome), shown as '$($refused.Current.Name)'"
+        Save-Shot $p '82-youtube-player-refused'
+    }
+    Invoke-Element (Find-Element $p 'YouTubeSaveButton')
+    Start-Sleep -Seconds 1
+    Stop-Aperture $p
+
+    # Saved survives a restart, and the consent is not asked again.
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Invoke-Element (Find-Element $p 'YouTubeButton')
+    if (-not (Find-ByName $p 'Saved' 10)) { throw 'the Saved shelf did not appear after a restart' }
+    Start-Sleep -Seconds 2
+    Move-MouseAway
+    Save-Shot $p '83-youtube-saved'
+
+    # A video id that does not exist is explained, not played or left blank.
+    Open-YouTubeLink $p 'https://www.youtube.com/watch?v=Ap3rtur3x0Q'
+    $title = Find-Element $p 'YouTubeProblemTitle' 30
+    Note "Unavailable video: $($title.Current.Name)"
+    Move-MouseAway
+    Save-Shot $p '84-youtube-unavailable'
+    Stop-Aperture $p
+
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Send-Keys $p '^,'
+    Start-Sleep -Seconds 1
+    $toggle = Find-Element $p 'YouTubeAutoplayToggle'
+    $scroll = $null
+    if ($toggle.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref] $scroll)) { $scroll.ScrollIntoView() }
+    $toggle.SetFocus()
+    Start-Sleep -Seconds 1
+    if ($toggle.Current.IsOffscreen) { throw 'Settings did not scroll to the YouTube group' }
+    Move-MouseAway
+    Save-Shot $p '85-settings-youtube'
     Stop-Aperture $p
 }
 

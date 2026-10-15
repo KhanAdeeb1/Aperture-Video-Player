@@ -44,6 +44,7 @@ Rules that hold the shape together:
 | `Aperture.Video` | `net10.0-windows` | The Direct3D 11 video presenter: ANGLE frame source, software fallback, composition swap chain, render thread (§4.2) | M2 |
 | `Aperture.Data` | `net10.0` | `Microsoft.Data.Sqlite` connection management, versioned SQL migrations, settings and playback-history repositories | M1 (brought forward from M4) |
 | `Aperture.Media` | `net10.0` | Library scanning, the background library coordinator, optional TMDB lookup and the artwork cache (§8) | M4 |
+| `Aperture.YouTube` | `net10.0` | YouTube Data API v3 client, oEmbed lookup, Google sign-in (loopback, PKCE) and `YouTubeService`, which keeps Continue watching, Saved and the 30-day details rule (§11). Knows nothing about local playback | M6 |
 | `Aperture.Server` | separate executable | Background media server for remote/cross-device playback | After first release |
 
 Tests mirror the modules: `tests/Aperture.<Module>.Tests`. Tests that need the native libmpv library are integration tests and are reported as skipped, never as passed, when the library is absent.
@@ -207,3 +208,22 @@ Player ─► EpisodeCueTracker (Core) ◄── segments + the user's correctio
 - **Corrections.** The player's Intro and credits panel lets the user mark a start and end at the current position, confirm what was found, say there is none, or go back to what was found. Corrections are stored in `segment_corrections` by fingerprint, survive re-analysis and rescans, and always win over detection (a confirmed or corrected segment counts as certain).
 - **Autoplay.** `EpisodeCueTracker` decides when the next-episode card shows: at confident credits that run to the end, or at the end of the file. The countdown (5 to 30 s, default 10) runs only when autoplay is on for that show; pausing, Esc, Cancel or Close stops it for that episode, and after three episodes in a row played by autoplay alone it waits for the user. Per-show preferences (`series_preferences`) override the Settings defaults for autoplay, intros and recaps.
 - **Read-only.** Analysis only reads media files. Nothing is written next to them.
+
+## 11. YouTube (Milestone 6)
+
+```
+YouTubeView (App) ─► YouTubeService ─► YouTubeDataApi (key, optional OAuth token) ─► googleapis.com/youtube/v3
+     │                    ├─► YouTubeOEmbed (no key) ─► youtube.com/oembed
+     │                    ├─► YouTubeAccount ─► GoogleOAuth (loopback + PKCE) ─► ISecretStore (Credential Manager)
+     │                    └─► IYouTubeStore (SQLite youtube_videos)
+     └─► YouTubePlayerView ─► WebView2 ─► Assets/YouTube/player.html (https://com.aperture.player/) ─► YouTube IFrame Player
+```
+
+- **Isolation.** YouTube is its own module and its own two screens. It shares only the settings store, the secret store, the database and the shared `HttpClient` with the rest of the app, and never touches the libmpv engine, the library or local history. A YouTube failure (no network, no key, quota, WebView2 missing) is shown inside the YouTube screens only.
+- **Playback** is YouTube's IFrame Player API in WebView2, never stream extraction. The page is served from a virtual host so the embed carries an app identity as its referrer, as YouTube's Required Minimum Functionality asks. The page reports state, time and error codes to the app with `postMessage`; the app sends `load`, `pause` and `stop`. Nothing is drawn over the player.
+- **Playability.** Before playing, `YouTubeService.LookupAsync` reads `videos.list` status (embeddable, privacy, age restriction, region, live/upcoming, processing) when a key is set, or oEmbed otherwise (404 not found, 401 not embeddable). `YouTubePlayabilityRules` turns that, or a player error code (100, 101/150, 153), into one explanation with Watch on YouTube.
+- **Stored data.** `youtube_videos` holds Aperture's own records (video ID, position, last watched, saved) and a dated copy of the title, channel, thumbnail and length. `YouTubeDataRules` refreshes the copy after 25 days and deletes it at 30, as the Developer Policies require.
+- **Account.** Optional and read-only (`youtube.readonly`), with the user's own OAuth client. Tokens live in Credential Manager; an expired or revoked refresh token signs the user out instead of failing silently.
+- **Autoplay** for YouTube is a separate setting (`youtube.autoplay`) using the same `NextEpisodeCountdown` as episodes, but never the episode autoplay setting.
+
+Setup, quota and limits for users: [youtube.md](youtube.md).

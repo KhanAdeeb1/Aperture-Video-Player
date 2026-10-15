@@ -18,6 +18,8 @@ namespace Aperture.Core.Settings;
 /// <param name="RecapSkip">What to do with recaps (each show can differ).</param>
 /// <param name="OfferSkipCredits">Show Skip credits during credits.</param>
 /// <param name="FindSegments">Compare episodes in the background to find intros, recaps and credits.</param>
+/// <param name="YouTubeAutoplay">Play the next video in a YouTube list when one ends (separate from episode autoplay).</param>
+/// <param name="YouTubeAccepted">The user agreed to YouTube's Terms of Service and the privacy notes before using the YouTube section.</param>
 public sealed record AppSettings(
     ResumeMode Resume,
     bool RememberHistory,
@@ -32,7 +34,9 @@ public sealed record AppSettings(
     SkipMode IntroSkip = SkipMode.Button,
     SkipMode RecapSkip = SkipMode.Button,
     bool OfferSkipCredits = true,
-    bool FindSegments = true)
+    bool FindSegments = true,
+    bool YouTubeAutoplay = false,
+    bool YouTubeAccepted = false)
 {
     /// <summary>The choices offered for <see cref="ControlsHideDelaySeconds"/>.</summary>
     public static IReadOnlyList<int> HideDelayChoices { get; } = [2, 3, 5, 10];

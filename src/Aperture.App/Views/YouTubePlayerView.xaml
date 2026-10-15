@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Watching a YouTube video. Primary task: watch it. The most important element is YouTube's
+    own player, which keeps its controls, branding, captions and ads exactly as YouTube draws
+    them: Aperture puts nothing over it (YouTube's Required Minimum Functionality forbids
+    overlays) and draws its own chrome only around it. Below the player: title, channel and
+    three actions. Beside it, when the video was opened from a list: Up next and the YouTube
+    autoplay switch, which is separate from autoplay for TV episodes.
+-->
+<UserControl
+    x:Class="Aperture.App.Views.YouTubePlayerView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid x:Name="Root" Background="{ThemeResource SurfaceBaseBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition x:Name="QueueColumn" Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Player and details -->
+        <Grid
+            x:Name="MainArea"
+            Margin="24,8,24,24"
+            SizeChanged="OnMainAreaSizeChanged">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid
+                x:Name="PlayerBox"
+                HorizontalAlignment="Center"
+                Background="{ThemeResource SurfaceVideoBrush}"
+                CornerRadius="{StaticResource RadiusMedium}">
+                <WebView2
+                    x:Name="Web"
+                    AutomationProperties.AutomationId="YouTubePlayer"
+                    AutomationProperties.Name="YouTube player"
+                    DefaultBackgroundColor="Black"
+                    Visibility="Collapsed" />
+
+                <!-- Before the player exists, and instead of it when it can't play: never on top of it. -->
+                <ProgressRing
+                    x:Name="LoadingRing"
+                    Width="32"
+                    Height="32"
+                    IsActive="False" />
+                <StackPanel
+                    x:Name="ProblemPanel"
+                    MaxWidth="440"
+                    Margin="24"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="8"
+                    Visibility="Collapsed">
+                    <FontIcon
+                        Margin="0,0,0,8"
+                        FontSize="{StaticResource IconStatus}"
+                        Foreground="{ThemeResource StatusCriticalBrush}"
+                        Glyph="&#xE783;"
+                        Style="{StaticResource IconGlyphStyle}" />
+                    <TextBlock
+                        x:Name="ProblemTitle"
+                        AutomationProperties.AutomationId="YouTubeProblemTitle"
+                        AutomationProperties.HeadingLevel="Level2"
+                        AutomationProperties.LiveSetting="Assertive"
+                        HorizontalTextAlignment="Center"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource SubtitleTextStyle}" />
+                    <TextBlock
+                        x:Name="ProblemDetail"
+                        HorizontalTextAlignment="Center"
+                        Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                        Style="{StaticResource BodyTextStyle}" />
+                    <Button
+                        x:Name="ProblemOpenButton"
+                        Margin="0,12,0,0"
+                        HorizontalAlignment="Center"
+                        AutomationProperties.AutomationId="YouTubeProblemOpen"
+                        Click="OnOpenOnYouTubeClick"
+                        Content="Watch on YouTube"
+                        Style="{StaticResource ApertureButtonStyle}" />
+                </StackPanel>
+            </Grid>
+
+            <!-- Details: YouTube's title and channel, unchanged, and Aperture's actions. -->
+            <Grid
+                x:Name="DetailsRow"
+                Grid.Row="1"
+                Margin="0,16,0,0"
+                HorizontalAlignment="Stretch">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Top">
+                    <TextBlock
+                        x:Name="TitleText"
+                        AutomationProperties.AutomationId="YouTubeTitle"
+                        AutomationProperties.HeadingLevel="Level1"
+                        MaxLines="2"
+                        Style="{StaticResource SubtitleTextStyle}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="WrapWholeWords" />
+                    <TextBlock
+                        x:Name="ChannelText"
+                        Margin="0,4,0,0"
+                        Style="{StaticResource CaptionTextStyle}" />
+                </StackPanel>
+                <StackPanel
+                    Grid.Column="1"
+                    Margin="16,0,0,0"
+                    VerticalAlignment="Top"
+                    Orientation="Horizontal"
+                    Spacing="4">
+                    <Button
+                        x:Name="SaveButton"
+                        AutomationProperties.AutomationId="YouTubeSaveButton"
+                        Click="OnSaveClick"
+                        Style="{StaticResource QuietButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon x:Name="SaveGlyph" Glyph="&#xE734;" Style="{StaticResource IconGlyphStyle}" />
+                            <TextBlock x:Name="SaveLabel" Text="Save" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        AutomationProperties.AutomationId="YouTubeOpenButton"
+                        AutomationProperties.Name="Watch on YouTube"
+                        Click="OnOpenOnYouTubeClick"
+                        Style="{StaticResource IconButtonStyle}"
+                        ToolTipService.ToolTip="Watch on YouTube">
+                        <FontIcon Glyph="&#xE8A7;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                    <Button
+                        x:Name="CopyButton"
+                        AutomationProperties.AutomationId="YouTubeCopyButton"
+                        AutomationProperties.Name="Copy link"
+                        Click="OnCopyLinkClick"
+                        Style="{StaticResource IconButtonStyle}"
+                        ToolTipService.ToolTip="Copy link">
+                        <FontIcon Glyph="&#xE71B;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Next-video card: counts down only when autoplay is on. -->
+            <Border
+                x:Name="NextCard"
+                Grid.Row="2"
+                MaxWidth="420"
+                Margin="0,16,0,0"
+                Padding="16"
+                HorizontalAlignment="Left"
+                Background="{ThemeResource SurfaceRaisedBrush}"
+                BorderBrush="{ThemeResource StrokeSubtleBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource RadiusLarge}"
+                Visibility="Collapsed">
+                <StackPanel Spacing="10">
+                    <TextBlock
+                        x:Name="NextCaption"
+                        AutomationProperties.AutomationId="YouTubeNextCaption"
+                        AutomationProperties.LiveSetting="Polite"
+                        Style="{StaticResource CaptionTextStyle}" />
+                    <TextBlock
+                        x:Name="NextTitle"
+                        MaxLines="2"
+                        Style="{StaticResource BodyStrongTextStyle}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="WrapWholeWords" />
+                    <ProgressBar
+                        x:Name="NextProgress"
+                        Maximum="1"
+                        Minimum="0"
+                        Visibility="Collapsed" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Name="PlayNextButton"
+                            AutomationProperties.AutomationId="YouTubePlayNext"
+                            Click="OnPlayNextClick"
+                            Content="Play now"
+                            Style="{StaticResource ApertureAccentButtonStyle}" />
+                        <Button
+                            x:Name="CancelNextButton"
+                            AutomationProperties.AutomationId="YouTubeCancelNext"
+                            Click="OnCancelNextClick"
+                            Content="Cancel"
+                            Style="{StaticResource ApertureButtonStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Up next: the rest of the list the video came from. -->
+        <Grid
+            x:Name="QueuePanel"
+            Grid.Column="1"
+            Width="340"
+            Margin="0,8,24,24"
+            Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid Margin="0,0,0,12">
+                <TextBlock
+                    VerticalAlignment="Center"
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource BodyStrongTextStyle}"
+                    Text="Up next" />
+                <ToggleSwitch
+                    x:Name="AutoplaySwitch"
+                    MinWidth="0"
+                    HorizontalAlignment="Right"
+                    AutomationProperties.AutomationId="YouTubeAutoplaySwitch"
+                    AutomationProperties.Name="Autoplay YouTube videos"
+                    OffContent="Autoplay"
+                    OnContent="Autoplay"
+                    Toggled="OnAutoplayToggled"
+                    ToolTipService.ToolTip="Play the next video in this list when one ends. Separate from autoplay for TV episodes." />
+            </Grid>
+
+            <ScrollViewer
+                Grid.Row="1"
+                HorizontalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="QueueList" Spacing="4" />
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

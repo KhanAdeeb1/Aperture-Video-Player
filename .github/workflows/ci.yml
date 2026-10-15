@@ -26,6 +26,7 @@ jobs:
           dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj -c Release
           dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj -c Release
           dotnet test tests/Aperture.Media.Tests/Aperture.Media.Tests.csproj -c Release
+          dotnet test tests/Aperture.YouTube.Tests/Aperture.YouTube.Tests.csproj -c Release
 
   test-media:
     name: Generate test media

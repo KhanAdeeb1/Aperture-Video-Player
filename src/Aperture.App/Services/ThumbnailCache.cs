@@ -27,18 +27,24 @@ internal sealed class ThumbnailCache
         ImageSource? image = null;
         try
         {
+            // Files are read off the interface thread. Windows.Storage calls made on it wait in a
+            // COM modal loop that lets XAML's timers run re-entrantly, which WinUI ends the
+            // process for (a fail-fast inside Microsoft.UI.Xaml.dll, seen in the visual review).
             if (artworkPath is not null && File.Exists(artworkPath))
             {
-                var file = await StorageFile.GetFileFromPathAsync(artworkPath);
-                using var stream = await file.OpenReadAsync();
+                var bytes = await Task.Run(() => File.ReadAllBytesAsync(artworkPath));
+                using var stream = new MemoryStream(bytes).AsRandomAccessStream();
                 var bitmap = new BitmapImage { DecodePixelWidth = (int)RequestedSize };
                 await bitmap.SetSourceAsync(stream);
                 image = bitmap;
             }
             else if (File.Exists(path))
             {
-                var file = await StorageFile.GetFileFromPathAsync(path);
-                using var thumbnail = await file.GetThumbnailAsync(ThumbnailMode.VideosView, RequestedSize, ThumbnailOptions.ResizeThumbnail);
+                using var thumbnail = await Task.Run(async () =>
+                {
+                    var file = await StorageFile.GetFileFromPathAsync(path);
+                    return await file.GetThumbnailAsync(ThumbnailMode.VideosView, RequestedSize, ThumbnailOptions.ResizeThumbnail);
+                });
                 if (thumbnail is not null && thumbnail.Type == ThumbnailType.Image)
                 {
                     var bitmap = new BitmapImage();

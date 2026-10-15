@@ -2,8 +2,9 @@
 
 Every dependency must appear here with its license and the reason it is needed before it is added to `Directory.Packages.props` or `third_party/`. "Checked" means the fact was looked up on the date shown; it is not legal advice.
 
-## In use (Milestones 2 to 5)
+## In use (Milestones 2 to 6)
 
+claude/milestones-3-4-9ux5cr
 Milestones 3, 4 and 5 added no packages and no native libraries. Milestone 5 reads sound, dark pictures and chapters for intro and credits detection with the libmpv already in use (its `ao=pcm` sound output and its encoding mode for a tiny grey copy of the picture), and computes the audio fingerprint in Aperture's own code instead of adding Chromaprint. The engine test project now also references `Aperture.Media`, which is Aperture's own code. Library scanning reuses libmpv headless instead of adding FFprobe, the TMDB key is stored with Windows Credential Manager through four `advapi32` functions called directly (`CredReadW`, `CredWriteW`, `CredDeleteW`, `CredFree`), and TMDB is reached with .NET's own `HttpClient`.
 
 | Dependency | Version | License | Why | Notes |
@@ -33,6 +34,9 @@ Milestones 3, 4 and 5 added no packages and no native libraries. Milestone 5 rea
 | Service | Terms | Why | Notes |
 |---|---|---|---|
 | [TMDB API](https://developer.themoviedb.org/docs) v3 | TMDB API terms of use; non-commercial use is free with attribution | Optional titles, years, episode names and posters for films and shows in the library | Used only when the user turns on "Look up details online" and pastes their own API key (v3 key or v4 read access token). Aperture ships no key. The key is kept in Windows Credential Manager, never in the database, settings or logs. Only the cleaned-up title, year, season and episode are sent, never file paths. Settings shows the required notice: "This product uses the TMDB API but is not endorsed or certified by TMDB." Commercial distribution would need TMDB's commercial terms |
+
+| [YouTube Data API v3](https://developers.google.com/youtube/v3) and [IFrame Player API](https://developers.google.com/youtube/iframe_api_reference) | [YouTube API Services Terms](https://developers.google.com/youtube/terms/api-services-terms-of-service) and [Developer Policies](https://developers.google.com/youtube/terms/developer-policies), checked 2026-10-15 | The YouTube section: search, popular videos, details, liked videos and playlists, and embedded playback | The player and oEmbed need no key. Search needs the user's own API key; liked videos and playlists need the user's own Google OAuth client and read-only consent. Aperture ships no key or client. Shows the YouTube Terms and Google Privacy Policy before first use. Details copied from the API are deleted after 30 days. See [youtube.md](youtube.md) |
+| [Google OAuth 2.0 for installed apps](https://developers.google.com/identity/protocols/oauth2/native-app) | Google APIs Terms of Service | Signing in for liked videos and playlists | Loopback redirect with PKCE; refresh token in Credential Manager; revoked on sign out |
 
 ## Build and CI tools (not shipped)
 

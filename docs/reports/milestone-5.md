@@ -58,7 +58,9 @@ What the new tests cover:
 - **Navigation after rescans:** order, next and previous, specials, multi-episode files, copies and same-name shows from different years.
 - **Analysis queue:** priorities, skipping already-analysed files, re-analysis when peers change, unreadable files recorded and not retried, background analysis turned off.
 
-The app's C# was compile-checked on Linux against the Windows App SDK reference assemblies, with every XAML event handler checked to exist. The XAML itself and the app's behaviour are verified by the Windows CI jobs on this PR (build for x64 and ARM64, smoke test, and the visual review below).
+The app's C# was compile-checked on Linux against the Windows App SDK reference assemblies, with every XAML event handler checked to exist. On Windows CI every job passes: the tests on Windows and Ubuntu, the app build for x64 and ARM64, and the visual review below.
+
+**A Windows-only problem found and fixed after the first merge (PR #7).** On Windows the credits of the test episodes reached only 0.80 instead of 0.95, because the dark picture was never seen. The cause: FFmpeg sends its log to only one libmpv instance per process, and in the app that is the player, so the analysis reader never received the `blackdetect` filter's lines. The reader now measures darkness itself: libmpv writes a tiny grey copy of the last part of the picture (32 by 18 pixels, 4 frames a second) to a temporary file, and a frame counts as dark when 85% of its pixels are at or below 31 of 255, held for at least a second. The temporary file is deleted afterwards; the media file is only read. A new engine test opens a player in the same process first and still finds the dark ending (it failed with the old reader). Engine tests: 68 passed, 0 failed.
 
 ## 4. Visual review
 
@@ -73,7 +75,9 @@ The visual-review job drives the real app through a new Episodes step on three g
 - With autoplay off, the card shows at the credits without a countdown and E1 is still playing 15 s later; shot `75-autoplay-off`.
 - Settings › TV episodes and Home's Up next card; shots `76-settings-episodes` and `77-home-up-next`.
 
-Design review answers for the new parts: the skip button and next-episode card sit bottom right, above the controls when they are visible, so the picture's centre stays clear. Only "Play now" uses the accent. The card has no artwork, gradient or animation beyond its progress line. The corrections panel reuses the side-panel shape of the info and sync panels. The results of the CI run are recorded on the PR.
+Design review answers for the new parts: the skip button and next-episode card sit bottom right, above the controls when they are visible, so the picture's centre stays clear. Only "Play now" uses the accent. The card has no artwork, gradient or animation beyond its progress line. The corrections panel reuses the side-panel shape of the info and sync panels. 
+
+Result on Windows CI: every check above passed. The log shows each episode's intro found at its own time (0:09, 0:25 and 0:04, confidence 0.80 with two agreeing episodes, so offered and not skipped automatically) and the credits from 2:00 at 0.95. Skip intro moved playback to 0:31, the countdown read "Next episode in 10 s", and with autoplay off the card read "Next episode" with no countdown. Looking at the shots found one layout fault, now fixed: when the player had just opened, the next-episode card could sit over the seek bar, because the controls had not been measured yet; the card now moves up whenever the controls change size.
 
 ## 5. Known limitations
 

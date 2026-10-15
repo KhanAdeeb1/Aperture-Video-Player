@@ -26,6 +26,7 @@ public sealed partial class LibraryView : UserControl
     public LibraryView()
     {
         InitializeComponent();
+        CardGrid.Fit(ItemsGrid);
 
         Kinds.Items.Add(new SelectorBarItem { Text = "All", Tag = null, IsSelected = true });
         foreach (var category in MediaCategories.All)

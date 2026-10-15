@@ -26,6 +26,8 @@ public sealed partial class HomeView : UserControl
     public HomeView()
     {
         InitializeComponent();
+        CardGrid.Fit(RecentRepeater);
+        CardGrid.Fit(ResultsRepeater);
     }
 
     /// <summary>The user chose something to play.</summary>

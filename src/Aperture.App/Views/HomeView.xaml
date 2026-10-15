@@ -262,7 +262,7 @@
                     <ItemsRepeater x:Name="RecentRepeater" ElementPrepared="OnCardPrepared">
                         <ItemsRepeater.Layout>
                             <UniformGridLayout
-                                ItemsStretch="Uniform"
+                                ItemsStretch="Fill"
                                 MinColumnSpacing="16"
                                 MinItemWidth="{StaticResource ArtworkSmallWidth}"
                                 MinRowSpacing="24" />
@@ -293,7 +293,7 @@
                 <ItemsRepeater x:Name="ResultsRepeater" ElementPrepared="OnCardPrepared">
                     <ItemsRepeater.Layout>
                         <UniformGridLayout
-                            ItemsStretch="Uniform"
+                            ItemsStretch="Fill"
                             MinColumnSpacing="16"
                             MinItemWidth="{StaticResource ArtworkSmallWidth}"
                             MinRowSpacing="24" />

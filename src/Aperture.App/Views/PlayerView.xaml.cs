@@ -578,6 +578,10 @@ public sealed partial class PlayerView : UserControl
                 break;
             case PlaybackStatus.Paused:
                 VisualStateManager.GoToState(this, "Ready", false);
+                // A file opened paused (Ask each time) never reaches Playing first; the
+                // timeline still has to show where it is.
+                _ticker.Start();
+                UpdateTimelineNow();
                 _ = SaveProgressAsync();
                 break;
             case PlaybackStatus.Ended:

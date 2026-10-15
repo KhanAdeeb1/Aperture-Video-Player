@@ -33,6 +33,7 @@ public static class Win {
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hwnd, int x, int y, int w, int h, bool repaint);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int cmd);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out RECT rect, int size);
 }
 "@
@@ -492,18 +493,18 @@ Step 'Library' {
     [System.Windows.Forms.SendKeys]::SendWait((Media 'Library'))
     [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
     Start-Sleep -Seconds 2
-    $picker = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-        [System.Windows.Automation.TreeScope]::Children,
-        (New-Object System.Windows.Automation.AndCondition(
-            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)),
-            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty, '#32770')))))
-    if ($picker) {
+    # Typing a path and Enter opens that folder in the picker; its commit button then picks it.
+    $pickerHandle = [Win]::FindWindow('#32770', $null)
+    if ($pickerHandle -ne [IntPtr]::Zero) {
+        $picker = [System.Windows.Automation.AutomationElement]::FromHandle($pickerHandle)
         $select = $picker.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
             (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, '1')))
-        if (-not $select) { throw 'the folder picker has no Select Folder button' }
+        if (-not $select) { throw 'the folder picker has no commit button' }
+        Note "Folder picker commit button: $($select.Current.Name)"
         Invoke-Element $select
         Start-Sleep -Seconds 2
     }
+    if ([Win]::FindWindow('#32770', $null) -ne [IntPtr]::Zero) { throw 'the folder picker is still open' }
     Save-Shot $p '61-add-folder-kind'
     Send-Keys $p '{ENTER}'
     Start-Sleep -Milliseconds 800

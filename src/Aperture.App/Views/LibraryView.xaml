@@ -149,13 +149,14 @@
         <ScrollViewer
             x:Name="ItemsScroller"
             Grid.Row="1"
+            AutomationProperties.AutomationId="LibraryItems"
+            AutomationProperties.Name="Library items"
             HorizontalScrollMode="Disabled"
             VerticalScrollBarVisibility="Auto"
             Visibility="Collapsed">
             <ItemsRepeater
                 x:Name="ItemsGrid"
                 Margin="40,0,40,48"
-                AutomationProperties.AutomationId="LibraryItems"
                 ElementPrepared="OnCardPrepared">
                 <ItemsRepeater.Layout>
                     <UniformGridLayout

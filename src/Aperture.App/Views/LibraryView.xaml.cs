@@ -222,7 +222,9 @@ public sealed partial class LibraryView : UserControl
     private string LastScanText()
     {
         var last = _snapshot.Folders.Select(f => f.LastScanCompletedUtc).Where(t => t is not null).Max();
-        if (_snapshot.Folders.Any(f => f.ScanIncomplete))
+        // While a scan is queued or running it is the one finishing the job, so the warning would
+        // only contradict the progress about to appear. A cancelled scan refreshes the view again.
+        if (_services?.Library.IsBusy != true && _snapshot.Folders.Any(f => f.ScanIncomplete))
         {
             return "Last scan didn’t finish; scan again to pick up the rest";
         }

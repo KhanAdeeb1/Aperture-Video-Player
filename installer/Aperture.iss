@@ -145,6 +145,10 @@ begin
       Exec(ExpandConstant('{sys}\cmdkey.exe'), '/delete:Aperture/YouTubeClientId', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       Exec(ExpandConstant('{sys}\cmdkey.exe'), '/delete:Aperture/YouTubeClientSecret', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       Exec(ExpandConstant('{sys}\cmdkey.exe'), '/delete:Aperture/YouTubeRefreshToken', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      // The media server's own certificate authority, kept in the user's certificate store.
+      Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+        '-NoProfile -NonInteractive -Command "Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -like ''CN=Aperture Media Server*'' } | Remove-Item"',
+        '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
   end;
 end;

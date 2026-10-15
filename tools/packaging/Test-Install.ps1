@@ -56,7 +56,13 @@ function Launch([string[]] $arguments = @()) {
     $p = if ($arguments.Count) { Start-Process -FilePath $exe -ArgumentList $arguments -PassThru } else { Start-Process -FilePath $exe -PassThru }
     $deadline = (Get-Date).AddSeconds(30)
     do { Start-Sleep -Milliseconds 500; $p.Refresh() } until ($p.HasExited -or $p.MainWindowHandle -ne 0 -or (Get-Date) -gt $deadline)
-    if ($p.HasExited) { Get-Content (Join-Path $dataDir 'Logs\aperture.log') -Tail 40 -ErrorAction SilentlyContinue; throw "Aperture exited during startup with code $($p.ExitCode)" }
+    if ($p.HasExited) {
+        Get-Content (Join-Path $dataDir 'Logs\aperture.log') -Tail 40 -ErrorAction SilentlyContinue
+        Get-WinEvent -LogName Application -MaxEvents 10 -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error' } | ForEach-Object { $_.Message }
+        Get-ChildItem $installDir -Filter *.pri | ForEach-Object { "installed resources: $($_.Name)" }
+        throw "Aperture exited during startup with code $($p.ExitCode)"
+    }
     Check ($p.MainWindowHandle -ne 0) "Aperture opened its window ('$($p.MainWindowTitle)')"
     return $p
 }

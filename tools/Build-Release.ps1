@@ -38,6 +38,8 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 dotnet publish (Join-Path $root 'src/Aperture.App/Aperture.App.csproj') -c Release -p:Platform=$Platform -r $rid --self-contained -nologo -o $publish
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)" }
 
+if (-not (Get-ChildItem $publish -Filter *.pri)) { throw 'The published app has no .pri file (compiled XAML resources); it would fail at launch' }
+Get-ChildItem $publish -Filter *.pri | ForEach-Object { Write-Host "Resources: $($_.Name) ($($_.Length) bytes)" }
 foreach ($required in 'Aperture.exe', 'libmpv-2.dll', 'av_libglesv2.dll', 'Assets/Aperture.ico', 'Server/Aperture.Server.exe', 'Server/wwwroot/app.js') {
     if (-not (Test-Path (Join-Path $publish $required))) { throw "$required is missing from the published app" }
 }

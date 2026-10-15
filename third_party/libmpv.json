@@ -1,0 +1,13 @@
+{
+  "comment": "Pinned libmpv builds for Windows, fetched by tools/Get-Libmpv.ps1. Change only after reviewing a new release; see third_party/README.md.",
+  "repository": "shinchiro/mpv-winbuild-cmake",
+  "release": "",
+  "assetPatterns": {
+    "win-x64": "^mpv-dev-x86_64-\\d{8}-git-[0-9a-f]+\\.7z$",
+    "win-arm64": "^mpv-dev-aarch64-\\d{8}-git-[0-9a-f]+\\.7z$"
+  },
+  "assets": {
+    "win-x64": { "file": "", "sha256": "" },
+    "win-arm64": { "file": "", "sha256": "" }
+  }
+}

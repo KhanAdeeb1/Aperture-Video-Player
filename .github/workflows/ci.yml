@@ -61,6 +61,17 @@ jobs:
           Write-Host "Aperture started and opened its window: '$($p.MainWindowTitle)'"
           Stop-Process -Id $p.Id -Force
 
+  libmpv-discovery:
+    name: Discover libmpv builds (temporary)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Look up the newest libmpv release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: tools/Get-Libmpv.ps1 -Discover
+
   test-media:
     name: Generate test media
     runs-on: ubuntu-latest

@@ -528,7 +528,8 @@ Step 'Seek preview, bookmarks, loop, sound' {
     Move-Mouse ([int]($box.Left + $box.Width * 0.30) - 4) $y
     Start-Sleep -Milliseconds 200
     Move-Mouse ([int]($box.Left + $box.Width * 0.30)) $y
-    Start-Sleep -Seconds 3
+    # Rest on the timeline past the idle delay: the controls (and the preview) must stay.
+    Start-Sleep -Seconds 4
     Save-Shot $p '100-seek-preview'
     try { Note "Seek preview time: $((Find-Element $p 'PreviewTime' 2).Current.Name)" } catch { Note 'Seek preview time text is not in the automation tree (the card is decorative); see 100-seek-preview.png' }
 
@@ -590,13 +591,14 @@ Step 'Error panel: try again and copy a report' {
     $p = Start-Aperture (Media 'Damaged Copy.mp4')
     Start-Sleep -Seconds 6
     Find-Element $p 'ErrorRetryButton' | Out-Null
+    Move-MouseAway
+    Save-Shot $p '107-error-retry-copy'
     Invoke-Element (Find-Element $p 'ErrorCopyButton')
     Start-Sleep -Milliseconds 800
     $report = Get-Clipboard -Raw
     if (-not $report -or -not $report.StartsWith('Aperture diagnostic report')) { throw "Copy details did not put a report on the clipboard: '$report'" }
     if ($report.Contains($MediaDir) -or $report.Contains('Damaged Copy')) { throw 'the copied report still names the media folder or file' }
     Note "Copied report: $((($report -split "`r?`n") | Select-Object -First 8) -join ' | ')"
-    Save-Shot $p '107-error-retry-copy'
     Stop-Aperture $p
 }
 

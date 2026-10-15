@@ -1678,6 +1678,17 @@ public sealed partial class PlayerView : UserControl
 
     private void OnControlsPointerExited(object sender, PointerRoutedEventArgs e)
     {
+        // Leaving a part inside the controls (the timeline's thumb, a button) bubbles up here
+        // too; the pointer has only left the controls when it is outside the whole panel.
+        if (sender is FrameworkElement panel)
+        {
+            var point = e.GetCurrentPoint(panel).Position;
+            if (point.X >= 0 && point.Y >= 0 && point.X < panel.ActualWidth && point.Y < panel.ActualHeight)
+            {
+                return;
+            }
+        }
+
         _pointerOnControls = false;
         _overlay.Poke();
     }

@@ -162,6 +162,68 @@ jobs:
           Stop-Process -Id $p.Id -Force
           if (Test-Path $log) { Get-Content $log }
 
+  release-package:
+    name: Release package (${{ matrix.platform }})
+    needs: test-media
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x64, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Install Inno Setup if the runner lacks it
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Build the installer and portable zip
+        shell: pwsh
+        run: tools/Build-Release.ps1 -Platform ${{ matrix.platform }} -OutDir "$env:RUNNER_TEMP/release"
+      # An "older version" built from the same files, so the upgrade path can be exercised.
+      - name: Build a stand-in older installer
+        if: matrix.platform == 'x64'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc /Qp /DAppVersion=0.0.9 /DPlatform=x64 "/DSourceDir=$env:RUNNER_TEMP\release\publish-win-x64" "/DOutputDir=$env:RUNNER_TEMP\older" installer/Aperture.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed ($LASTEXITCODE)" }
+      - uses: actions/download-artifact@v4
+        if: matrix.platform == 'x64'
+        with:
+          name: test-media
+          path: ${{ runner.temp }}/test-media
+      - name: Install, upgrade and uninstall
+        if: matrix.platform == 'x64'
+        shell: pwsh
+        run: >
+          tools/release/Test-Install.ps1
+          -OldSetup "$env:RUNNER_TEMP/older/Aperture-0.0.9-x64-setup.exe"
+          -NewSetup (Get-ChildItem "$env:RUNNER_TEMP/release/Aperture-*-x64-setup.exe").FullName
+          -Video "$env:RUNNER_TEMP/test-media/Night Market.mkv"
+      - name: Open and close 20 times, then play for 10 minutes
+        if: matrix.platform == 'x64'
+        shell: powershell
+        run: >
+          tools/release/Test-Soak.ps1
+          -Exe "$env:RUNNER_TEMP/release/publish-win-x64/Aperture.exe"
+          -Video "$env:RUNNER_TEMP/test-media/Harbour Lights.mp4"
+          -OutDir "$env:RUNNER_TEMP/soak" -Cycles 20 -Minutes 10
+      - name: Release files
+        shell: pwsh
+        run: Get-ChildItem "$env:RUNNER_TEMP/release" -File | ForEach-Object { "{0,-45} {1,8:N0} MB" -f $_.Name, ($_.Length / 1MB) }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aperture-${{ matrix.platform }}
+          path: |
+            ${{ runner.temp }}/release/*.exe
+            ${{ runner.temp }}/release/*.zip
+            ${{ runner.temp }}/release/SHA256SUMS-*.txt
+          retention-days: 14
+          compression-level: 0
+
   visual-review:
     name: Visual review screenshots
     needs: test-media

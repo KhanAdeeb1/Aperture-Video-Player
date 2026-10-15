@@ -12,6 +12,7 @@
     <RootNamespace>Aperture.App</RootNamespace>
     <AssemblyName>Aperture</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Aperture.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
@@ -43,6 +44,8 @@
   <!-- The page that hosts YouTube's embedded player, served to WebView2 from a virtual host. -->
   <ItemGroup>
     <Content Include="Assets\YouTube\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The mark, drawn by tools/brand/make-icon.py: the exe's icon and the window's taskbar icon. -->
+    <Content Include="Assets\Aperture.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

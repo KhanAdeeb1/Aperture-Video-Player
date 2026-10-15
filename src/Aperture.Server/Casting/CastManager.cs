@@ -94,7 +94,7 @@ public sealed class CastManager : IAsyncDisposable
 
         // Renderers are on the home network: no proxy, and a short timeout so a TV that has gone is noticed.
         _http = new HttpClient(new SocketsHttpHandler { UseProxy = false, ConnectTimeout = TimeSpan.FromSeconds(3) }) { Timeout = TimeSpan.FromSeconds(4) };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("Aperture/1.0");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd($"Aperture/{typeof(CastManager).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"}");
     }
 
     internal CastTimings Timings { get; set; } = CastTimings.Default;

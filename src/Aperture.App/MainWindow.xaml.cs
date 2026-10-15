@@ -246,6 +246,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Aperture.ico"));
         SetCaptionButtonsVisible(true);
 
         var scale = Scale();

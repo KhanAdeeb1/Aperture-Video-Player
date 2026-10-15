@@ -118,7 +118,7 @@ public sealed class ApertureDatabase
         source.BackupDatabase(destination);
     }
 
-    private static List<string> LoadMigrations()
+    internal static List<string> LoadMigrations()
     {
         var assembly = typeof(ApertureDatabase).Assembly;
         var names = assembly.GetManifestResourceNames()

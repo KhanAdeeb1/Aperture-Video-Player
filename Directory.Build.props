@@ -10,5 +10,7 @@
     <Company>Aperture</Company>
     <Product>Aperture</Product>
     <Deterministic>true</Deterministic>
+    <!-- The release version, shown in Settings › About and used by the installer (installer/Aperture.iss). -->
+    <Version>0.1.0</Version>
   </PropertyGroup>
 </Project>

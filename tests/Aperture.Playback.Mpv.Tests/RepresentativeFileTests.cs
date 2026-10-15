@@ -68,6 +68,9 @@ public class RepresentativeFileTests
     {
         using var engine = await TestMedia.CreateEngineAsync();
         await engine.OpenAsync(TestMedia.PathOf("mpeg2-anamorphic.ts"), TimeSpan.Zero);
+
+        // The file is loaded before its first frame is decoded; the display size comes with that frame.
+        Assert.True(await TestMedia.WaitAsync(() => engine.ReadProperty("video-params/dh") is not null), "no video parameters");
         var width = double.Parse(engine.ReadProperty("video-params/dw")!, CultureInfo.InvariantCulture);
         var height = double.Parse(engine.ReadProperty("video-params/dh")!, CultureInfo.InvariantCulture);
         Assert.InRange(width / height, 1.76, 1.79);

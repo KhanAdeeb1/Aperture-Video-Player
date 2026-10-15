@@ -19,6 +19,10 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
 
     private static readonly TimeSpan OpenLimit = TimeSpan.FromSeconds(20);
 
+    private static readonly TimeSpan LogQuiet = TimeSpan.FromMilliseconds(250);
+
+    private static readonly TimeSpan LogDrainLimit = TimeSpan.FromSeconds(3);
+
     public async Task<AudioSamples?> ReadAudioAsync(string path, TimeSpan start, TimeSpan? length, int sampleRate, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -195,11 +199,13 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
         {
             var loaded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var ended = new TaskCompletionSource<(MpvEndFileReason Reason, int Error)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var lastLog = Environment.TickCount64;
             client.MessageReceived += message =>
             {
                 switch (message.Id)
                 {
                     case MpvEventId.LogMessage:
+                        Interlocked.Exchange(ref lastLog, Environment.TickCount64);
                         onLog?.Invoke(message);
                         if (message.LogLevel is "error" or "fatal")
                         {
@@ -211,6 +217,7 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
                         loaded.TrySetResult(true);
                         break;
                     case MpvEventId.EndFile when message.EndReason is MpvEndFileReason.Error or MpvEndFileReason.Eof:
+                        Interlocked.Exchange(ref lastLog, Environment.TickCount64);
                         loaded.TrySetResult(false);
                         ended.TrySetResult((message.EndReason, message.EndError));
                         break;
@@ -248,6 +255,18 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
                 if (reason == MpvEndFileReason.Error)
                 {
                     throw new IOException($"{Path.GetFileName(path)} could not be read to the end.");
+                }
+
+                if (onLog is not null)
+                {
+                    // libmpv hands out events before log lines, so the end of the file can arrive
+                    // ahead of the last lines a filter wrote (blackdetect reports a dark stretch
+                    // that reaches the end only as the file ends). Read on until the log goes quiet.
+                    var deadline = Environment.TickCount64 + (long)LogDrainLimit.TotalMilliseconds;
+                    while (Environment.TickCount64 - Interlocked.Read(ref lastLog) < LogQuiet.TotalMilliseconds && Environment.TickCount64 < deadline)
+                    {
+                        await Task.Delay(LogQuiet / 4, cancellationToken).ConfigureAwait(false);
+                    }
                 }
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

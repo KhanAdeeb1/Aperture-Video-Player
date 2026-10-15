@@ -108,7 +108,12 @@ function Find-InApp($p, [string] $id, [int] $seconds = 5) {
     throw "UI element '$id' not found in any of Aperture's windows"
 }
 
-function Invoke-Element($element) { $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+function Invoke-Element($element) {
+    # A toggle menu item (ToggleMenuFlyoutItem) offers Toggle instead of Invoke; toggling it raises its Click.
+    $pattern = $null
+    if ($element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref] $pattern)) { $pattern.Invoke() }
+    else { $element.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle() }
+}
 function Get-Range($element) { $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).Current }
 function Set-Range($element, [double] $value) { $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).SetValue($value) }
 

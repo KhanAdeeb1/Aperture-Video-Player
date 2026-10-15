@@ -609,14 +609,15 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
 
         _log(message.LogLevel ?? "info", $"libmpv [{message.LogPrefix}] {text}");
 
-        // A decoder that cannot start does not end playback (the other stream keeps playing),
-        // so it is surfaced as a notice rather than a failure.
-        if (message.LogLevel is "error" or "fatal" && text.Contains("decoder", StringComparison.OrdinalIgnoreCase))
+        // A decoder or sound device that cannot start does not end playback (the other stream
+        // keeps playing), so it is surfaced as a notice rather than a failure.
+        if (message.LogLevel is "error" or "fatal")
         {
-            var notice = message.LogPrefix switch
+            var notice = (message.LogPrefix, text) switch
             {
-                "vd" => "Aperture can’t decode the picture in this file. The sound will still play.",
-                "ad" => "Aperture can’t decode the sound in this file. The picture will still play.",
+                ("vd", var t) when t.Contains("decoder", StringComparison.OrdinalIgnoreCase) => "Aperture can’t decode the picture in this file. The sound will still play.",
+                ("ad", var t) when t.Contains("decoder", StringComparison.OrdinalIgnoreCase) => "Aperture can’t decode the sound in this file. The picture will still play.",
+                ("cplayer", var t) when t.Contains("audio device", StringComparison.OrdinalIgnoreCase) => "No sound device is available, so this video is playing without sound.",
                 _ => null,
             };
             if (notice is not null)

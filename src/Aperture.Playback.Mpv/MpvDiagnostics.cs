@@ -100,16 +100,10 @@ internal static class MpvDiagnostics
         return present.Length == 0 ? null : string.Join(" · ", present);
     }
 
-    private static string? Codec(string? shortName, string? description)
-    {
-        var name = TrackLabels.CodecName(shortName);
-        if (name is null)
-        {
-            return description;
-        }
-
-        return description is null || description.Equals(shortName, StringComparison.OrdinalIgnoreCase) ? name : $"{name} ({description})";
-    }
+    // FFmpeg's long names ("H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10") only help for codecs
+    // Aperture has no short name for.
+    private static string? Codec(string? shortName, string? description) =>
+        TrackLabels.KnownCodecName(shortName) ?? description ?? TrackLabels.CodecName(shortName);
 
     private static string? Size(string? width, string? height) =>
         Number(width) is { } w && Number(height) is { } h && w > 0 && h > 0 ? Invariant($"{w:0}×{h:0}") : null;

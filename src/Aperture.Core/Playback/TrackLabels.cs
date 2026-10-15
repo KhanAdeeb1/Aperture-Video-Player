@@ -105,7 +105,11 @@ public static class TrackLabels
     }
 
     /// <summary>Readable codec names for the common short names engines report.</summary>
-    public static string? CodecName(string? codec) => codec?.ToLowerInvariant() switch
+    public static string? CodecName(string? codec) =>
+        string.IsNullOrEmpty(codec) ? null : KnownCodecName(codec) ?? codec.ToUpperInvariant();
+
+    /// <summary>The readable name for a codec Aperture knows, or null for any other.</summary>
+    public static string? KnownCodecName(string? codec) => codec?.ToLowerInvariant() switch
     {
         null or "" => null,
         "h264" => "H.264",
@@ -139,7 +143,7 @@ public static class TrackLabels
         "dvd_subtitle" => "VobSub",
         "dvb_subtitle" => "DVB",
         var other when other.StartsWith("pcm", StringComparison.Ordinal) => "PCM",
-        var other => other.ToUpperInvariant(),
+        _ => null,
     };
 
     /// <summary>"Mono", "Stereo", "5.1", "7.1", or "N channels".</summary>

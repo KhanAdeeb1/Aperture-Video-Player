@@ -205,6 +205,7 @@ public sealed partial class PlayerView : UserControl
         OpeningText.Text = Title;
         ResumeNotice.Visibility = Visibility.Collapsed;
         ResetSpeedMenu();
+        SetAspect(AspectMode.Original, announce: false);
         SetTimeline(TimeSpan.Zero, TimeSpan.Zero);
         UpdateTracksButton();
 

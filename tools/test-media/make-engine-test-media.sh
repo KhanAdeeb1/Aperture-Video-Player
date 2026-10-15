@@ -100,6 +100,8 @@ episode() { # name cold-open-seconds story-seconds seed
 episode "Harbour.S01E01.mkv" 10 40 100
 episode "Harbour.S01E02.mkv" 3 47 200
 episode "Harbour.S01E03.mkv" 15 35 300
+# The same episode in MP4 with the index at the front, as the visual-review episodes are made.
+ff -i Harbour.S01E01.mkv -c copy -movflags +faststart Harbour.S01E01.mp4
 cat > .chapters.txt <<'META'
 ;FFMETADATA1
 [CHAPTER]

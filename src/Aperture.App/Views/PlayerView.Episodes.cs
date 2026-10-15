@@ -446,6 +446,13 @@ public sealed partial class PlayerView
 
     private void OnPreviousEpisodeClick(object sender, RoutedEventArgs e) => PlayPrevious();
 
+    // The controls have no height until their first layout, which can come after the overlay was shown.
+    private void OnControlsSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateSubtitleLift();
+        UpdateCueLift();
+    }
+
     /// <summary>Keeps Skip and the next-episode card clear of the controls while those show.</summary>
     private void UpdateCueLift()
     {

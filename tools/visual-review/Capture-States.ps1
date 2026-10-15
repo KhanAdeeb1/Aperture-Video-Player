@@ -91,7 +91,29 @@ function Find-ByName($p, [string] $name, [int] $seconds = 5) {
     return $null
 }
 
-function Invoke-Element($element) { $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+# Menus and flyouts can open in their own popup window; look through every window of the app.
+function Find-InApp($p, [string] $id, [int] $seconds = 5) {
+    $condition = New-Object System.Windows.Automation.AndCondition(
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)),
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $id)))
+    $windows = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        foreach ($window in [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $windows)) {
+            $element = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+            if ($element) { return $element }
+        }
+        Start-Sleep -Milliseconds 300
+    }
+    throw "UI element '$id' not found in any of Aperture's windows"
+}
+
+function Invoke-Element($element) {
+    # A toggle menu item (ToggleMenuFlyoutItem) offers Toggle instead of Invoke; toggling it raises its Click.
+    $pattern = $null
+    if ($element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref] $pattern)) { $pattern.Invoke() }
+    else { $element.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle() }
+}
 function Get-Range($element) { $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).Current }
 function Set-Range($element, [double] $value) { $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).SetValue($value) }
 
@@ -146,7 +168,7 @@ function Write-CrashDetails {
 function Step([string] $name, [scriptblock] $body) {
     Write-Host "=== $name"
     try { & $body }
-    catch { $failures.Add("${name}: $($_.Exception.Message)"); Write-Warning "${name} failed: $($_.Exception.Message)"; Write-CrashDetails }
+    catch { $failures.Add("${name}: $($_.Exception.Message)"); Note "FAILED ${name}: $($_.Exception.Message)"; Write-Warning "${name} failed: $($_.Exception.Message)"; Write-CrashDetails }
     Get-Process -Name Aperture -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
@@ -705,7 +727,7 @@ Step 'Episodes' {
     Move-MouseToCenter $p
     Invoke-Element (Find-Element $p 'MoreButton')
     Start-Sleep -Milliseconds 800
-    Invoke-Element (Find-Element $p 'SegmentsMenuItem' 3)
+    Invoke-Element (Find-InApp $p 'SegmentsMenuItem' 5)
     Start-Sleep -Seconds 1
     Find-Element $p 'ConfirmSegmentButton' 3 | Out-Null
     Move-MouseAway

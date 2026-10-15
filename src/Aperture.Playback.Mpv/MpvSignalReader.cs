@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using Aperture.Core.Series;
 using Aperture.Playback.Mpv.Interop;
 
@@ -9,19 +8,26 @@ namespace Aperture.Playback.Mpv;
 /// Reads what intro and credits detection needs, using a separate headless libmpv instance for
 /// each request: nothing is shown or heard and the file is only read. Sound is decoded faster
 /// than real time to a temporary file in Aperture's data folder (never next to the media) and
-/// deleted afterwards; dark stretches come from FFmpeg's blackdetect filter on a reduced
-/// picture; chapters are read from the container.
+/// deleted afterwards; dark stretches are measured on a tiny grey copy of the picture, written
+/// the same way; chapters are read from the container.
 /// </summary>
-public sealed partial class MpvSignalReader(string workDirectory, Action<string, string> log) : IMediaSignals
+public sealed class MpvSignalReader(string workDirectory, Action<string, string> log) : IMediaSignals
 {
     /// <summary>Longest a single request may take, so a damaged file cannot stall analysis.</summary>
     public static TimeSpan TimeLimit { get; set; } = TimeSpan.FromMinutes(20);
 
     private static readonly TimeSpan OpenLimit = TimeSpan.FromSeconds(20);
 
-    private static readonly TimeSpan LogQuiet = TimeSpan.FromMilliseconds(250);
-
-    private static readonly TimeSpan LogDrainLimit = TimeSpan.FromSeconds(3);
+    // The dark-picture check looks at a 32 x 18 grey picture, four times a second. A frame is
+    // dark when at least 85 % of it is below 12 % brightness, held for at least a second. This is
+    // measured here rather than read from FFmpeg's blackdetect filter, because FFmpeg sends its
+    // log to only one libmpv instance in a process, and in the app that is the player's.
+    private const int SampleWidth = 32;
+    private const int SampleHeight = 18;
+    private const int SamplesPerSecond = 4;
+    private const int DarkPixel = 31;
+    private const double DarkShare = 0.85;
+    private static readonly TimeSpan ShortestDark = TimeSpan.FromSeconds(1);
 
     public async Task<AudioSamples?> ReadAudioAsync(string path, TimeSpan start, TimeSpan? length, int sampleRate, CancellationToken cancellationToken = default)
     {
@@ -50,7 +56,7 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
                 options.Add(new("length", Seconds(span)));
             }
 
-            var hasAudio = await PlayThroughAsync(path, options, "current-tracks/audio/id", null, cancellationToken).ConfigureAwait(false);
+            var hasAudio = await PlayThroughAsync(path, options, "current-tracks/audio/id", cancellationToken).ConfigureAwait(false);
             if (!hasAudio)
             {
                 return null;
@@ -70,54 +76,87 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
     public async Task<IReadOnlyList<TimeRange>?> FindDarkStretchesAsync(string path, TimeSpan start, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        var found = new List<TimeRange>();
-        var gate = new Lock();
-        double? duration = null;
-        void OnLog(MpvMessage message)
+        Directory.CreateDirectory(workDirectory);
+        var output = Path.Combine(workDirectory, $"picture-{Guid.NewGuid():N}.raw");
+        try
         {
-            if (message.LogPrefix != "ffmpeg" || message.LogText is not { } text || BlackLine().Match(text) is not { Success: true } match)
+            double? duration = null;
+            List<KeyValuePair<string, string>> options =
+            [
+                .. Headless,
+                new("aid", "no"),
+                // libmpv's encoding mode writes each reduced frame, uncompressed, to the file.
+                new("o", output),
+                new("of", "rawvideo"),
+                new("ovc", "rawvideo"),
+                new("vd-lavc-skiploopfilter", "all"),
+                new("vd-lavc-threads", "2"),
+                new("vf", $"lavfi=[fps={SamplesPerSecond},scale={SampleWidth}:{SampleHeight}:flags=area,format=gray]"),
+                new("hr-seek", "yes"),
+                new("start", Seconds(start)),
+            ];
+            var hasVideo = await PlayThroughAsync(path, options, "current-tracks/video/id", cancellationToken, client => duration = client.GetDouble("duration")).ConfigureAwait(false);
+            if (!hasVideo)
             {
-                return;
+                return null;
             }
 
-            var from = double.Parse(match.Groups["start"].Value, CultureInfo.InvariantCulture);
-            var to = double.Parse(match.Groups["end"].Value, CultureInfo.InvariantCulture);
-            lock (gate)
-            {
-                found.Add(new TimeRange(TimeSpan.FromSeconds(from), TimeSpan.FromSeconds(to)));
-            }
-        }
-
-        List<KeyValuePair<string, string>> options =
-        [
-            .. Headless,
-            new("aid", "no"),
-            new("ao", "null"),
-            new("vo", "null"),
-            new("untimed", "yes"),
-            new("hr-seek", "yes"),
-            new("vd-lavc-skiploopfilter", "all"),
-            new("vd-lavc-threads", "2"),
-            // A small picture is enough to tell a dark frame, and much cheaper to test.
-            new("vf", "lavfi=[scale=256:-2,blackdetect=d=1:pic_th=0.85:pix_th=0.12]"),
-            new("start", Seconds(start)),
-        ];
-        var hasVideo = await PlayThroughAsync(path, options, "current-tracks/video/id", OnLog, cancellationToken, client => duration = client.GetDouble("duration")).ConfigureAwait(false);
-        if (!hasVideo)
-        {
-            return null;
-        }
-
-        lock (gate)
-        {
-            // blackdetect reports a stretch that runs to the end at its last frame's start; reach the real end.
-            if (duration is { } total && found.Count > 0 && total - found[^1].End.TotalSeconds is > 0 and < 0.5)
+            var frames = File.Exists(output) ? await File.ReadAllBytesAsync(output, cancellationToken).ConfigureAwait(false) : [];
+            var found = DarkStretches(frames, start, SampleWidth * SampleHeight, SamplesPerSecond);
+            // The last sample stands for a quarter of a second; a stretch reaching it reaches the end.
+            if (duration is { } total && found.Count > 0 && Math.Abs(total - found[^1].End.TotalSeconds) < 0.5)
             {
                 found[^1] = found[^1] with { End = TimeSpan.FromSeconds(total) };
             }
 
-            return found.OrderBy(r => r.Start).ToList();
+            return found;
         }
+        finally
+        {
+            TryDelete(output);
+        }
+    }
+
+    /// <summary>Dark stretches in grey frames of <paramref name="frameSize"/> bytes taken <paramref name="perSecond"/> times a second from <paramref name="start"/>.</summary>
+    internal static List<TimeRange> DarkStretches(ReadOnlySpan<byte> frames, TimeSpan start, int frameSize, int perSecond)
+    {
+        var found = new List<TimeRange>();
+        var count = frames.Length / frameSize;
+        var runStart = -1;
+        for (var i = 0; i <= count; i++)
+        {
+            var dark = i < count && IsDark(frames.Slice(i * frameSize, frameSize));
+            if (dark && runStart < 0)
+            {
+                runStart = i;
+            }
+            else if (!dark && runStart >= 0)
+            {
+                var range = new TimeRange(start + TimeSpan.FromSeconds((double)runStart / perSecond), start + TimeSpan.FromSeconds((double)i / perSecond));
+                if (range.Length >= ShortestDark)
+                {
+                    found.Add(range);
+                }
+
+                runStart = -1;
+            }
+        }
+
+        return found;
+    }
+
+    private static bool IsDark(ReadOnlySpan<byte> frame)
+    {
+        var darkPixels = 0;
+        foreach (var value in frame)
+        {
+            if (value <= DarkPixel)
+            {
+                darkPixels++;
+            }
+        }
+
+        return darkPixels >= DarkShare * frame.Length;
     }
 
     public async Task<IReadOnlyList<ChapterMark>> ReadChaptersAsync(string path, CancellationToken cancellationToken = default)
@@ -189,24 +228,19 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
         string path,
         List<KeyValuePair<string, string>> options,
         string trackProperty,
-        Action<MpvMessage>? onLog,
         CancellationToken cancellationToken,
         Action<MpvClient>? onLoaded = null)
     {
-        var level = onLog is null ? "error" : "v";
-        var client = await Task.Run(() => MpvClient.Create(options, level, log), cancellationToken).ConfigureAwait(false);
+        var client = await Task.Run(() => MpvClient.Create(options, "error", log), cancellationToken).ConfigureAwait(false);
         try
         {
             var loaded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var ended = new TaskCompletionSource<(MpvEndFileReason Reason, int Error)>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var lastLog = Environment.TickCount64;
             client.MessageReceived += message =>
             {
                 switch (message.Id)
                 {
                     case MpvEventId.LogMessage:
-                        Interlocked.Exchange(ref lastLog, Environment.TickCount64);
-                        onLog?.Invoke(message);
                         if (message.LogLevel is "error" or "fatal")
                         {
                             log("warn", $"Analysing {Path.GetFileName(path)}: {message.LogPrefix}: {message.LogText}");
@@ -217,7 +251,6 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
                         loaded.TrySetResult(true);
                         break;
                     case MpvEventId.EndFile when message.EndReason is MpvEndFileReason.Error or MpvEndFileReason.Eof:
-                        Interlocked.Exchange(ref lastLog, Environment.TickCount64);
                         loaded.TrySetResult(false);
                         ended.TrySetResult((message.EndReason, message.EndError));
                         break;
@@ -256,18 +289,6 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
                 {
                     throw new IOException($"{Path.GetFileName(path)} could not be read to the end.");
                 }
-
-                if (onLog is not null)
-                {
-                    // libmpv hands out events before log lines, so the end of the file can arrive
-                    // ahead of the last lines a filter wrote (blackdetect reports a dark stretch
-                    // that reaches the end only as the file ends). Read on until the log goes quiet.
-                    var deadline = Environment.TickCount64 + (long)LogDrainLimit.TotalMilliseconds;
-                    while (Environment.TickCount64 - Interlocked.Read(ref lastLog) < LogQuiet.TotalMilliseconds && Environment.TickCount64 < deadline)
-                    {
-                        await Task.Delay(LogQuiet / 4, cancellationToken).ConfigureAwait(false);
-                    }
-                }
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -278,7 +299,7 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
         }
         finally
         {
-            // Disposing ends playback and closes the sound file, so it is complete when read.
+            // Disposing ends playback and closes the output file, so it is complete when read.
             await Task.Run(client.Dispose, CancellationToken.None).ConfigureAwait(false);
         }
     }
@@ -304,6 +325,4 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
         }
     }
 
-    [GeneratedRegex(@"black_start:(?<start>[0-9.]+)\s+black_end:(?<end>[0-9.]+)")]
-    private static partial Regex BlackLine();
 }

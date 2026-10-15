@@ -153,7 +153,8 @@
                 GotFocus="OnControlsGotFocus"
                 LostFocus="OnControlsLostFocus"
                 PointerEntered="OnControlsPointerEntered"
-                PointerExited="OnControlsPointerExited">
+                PointerExited="OnControlsPointerExited"
+                SizeChanged="OnControlsSizeChanged">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />

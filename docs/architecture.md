@@ -40,7 +40,8 @@ Rules that hold the shape together:
 |---|---|---|---|
 | `Aperture.App` | `net10.0-windows10.0.22621.0` | WinUI shell, screens, input, window management, video surface host | M0 (empty shell) |
 | `Aperture.Core` | `net10.0` | Domain records and rules (`HistoryEntry`, `WatchProgress`, `HomeShelves`, `AppSettings`, `TimeFormat`), contracts (`IPlaybackEngine`, `ISettingsStore`, `IPlaybackHistory`), `AppDataLocation` | M0, extended in M1 |
-| `Aperture.Playback.Mpv` | `net10.0` (+ Windows-only render bridge) | Hand-written P/Invoke over the libmpv client API, a dedicated event thread, property observation, command dispatch, disposal | M1 |
+| `Aperture.Playback.Mpv` | `net10.0` | Hand-written P/Invoke over the libmpv client and render APIs, a dedicated event thread, property observation, command dispatch, track list, diagnostics, failure mapping, disposal | M2 |
+| `Aperture.Video` | `net10.0-windows` | The Direct3D 11 video presenter: ANGLE frame source, software fallback, composition swap chain, render thread (§4.2) | M2 |
 | `Aperture.Data` | `net10.0` | `Microsoft.Data.Sqlite` connection management, versioned SQL migrations, settings and playback-history repositories | M1 (brought forward from M4) |
 | `Aperture.Media` | `net10.0` | Media inspection (libmpv track list during playback; FFprobe for library scanning), folder scanning, artwork | M6 |
 | `Aperture.Server` | separate executable | Background media server for remote/cross-device playback | After first release |
@@ -92,39 +93,57 @@ Tests mirror the modules: `tests/Aperture.<Module>.Tests`. Tests that need the n
 | Option | Strengths | Weaknesses | Verdict |
 |---|---|---|---|
 | **libmpv** (recommended) | Broad format/codec coverage through FFmpeg; libass subtitle rendering; high-quality scaling and tone mapping; d3d11va/hardware decoding; stable C client API (`client.h`, API version 2.5 on mpv master as checked 2026-10-15); property/observer model maps cleanly to MVVM | Render API supports only OpenGL and software rendering (verified in `include/mpv/render.h` on mpv master, 2026-10-15), so integration with WinUI's Direct3D composition needs a bridge; GPL/LGPL build choice matters (see dependencies.md); no official Windows binaries from the mpv project | Proposed engine |
-| LibVLC / LibVLCSharp | Mature, LGPL, wide codec support, existing .NET bindings | Less control over rendering quality and subtitle styling; WinUI 3 integration is community-maintained (unverified state) | Fallback if libmpv integration fails the M1 spike |
+| LibVLC / LibVLCSharp | Mature, LGPL, wide codec support, existing .NET bindings | Less control over rendering quality and subtitle styling; WinUI 3 integration is community-maintained (unverified state) | Fallback if libmpv integration had failed (it did not; see §4.2 and §4.5) |
 | `Windows.Media.Playback` (MediaPlayerElement) | Native WinUI control, simplest integration, no native redistribution | Codec coverage depends on installed Windows codecs (HEVC needs a Store extension, MKV/ASS subtitle support is limited); little control over rendering | Rejected for the core player |
 | Custom FFmpeg pipeline | Full control | Very large effort (A/V sync, subtitles, rendering) | Rejected |
 
-### 4.2 Rendering path (decision deferred to the M1 spike)
+### 4.2 Rendering path (chosen in Milestone 2, awaiting adi's approval)
 
-WinUI 3 does not expose a per-control HWND, and libmpv cannot render directly into Direct3D 11 through its render API. Two paths are credible; neither is proven yet.
+WinUI 3 gives no per-control HWND, and libmpv's render API offers only OpenGL and software output. Two paths were credible (see the Milestone 0 audit). **Milestone 2 implements Path A over ANGLE**, and this is flagged for adi's approval in the Milestone 2 report.
 
-**Path A: render API → OpenGL → Direct3D 11 → `SwapChainPanel`** (preferred if it performs)
-libmpv renders into an OpenGL framebuffer on a hidden window; the framebuffer is shared with a D3D11 texture through `WGL_NV_DX_interop2` (or an EGL/ANGLE equivalent), and that texture is presented in a XAML `SwapChainPanel`. Controls are ordinary XAML layered over the video, which is exactly what "content before interface" needs.
-Unverified: driver support for the interop extension across NVIDIA/AMD/Intel, frame pacing, cost of the extra copy, HDR output (likely lost on this path), and behaviour across DPI/monitor changes.
+```
+libmpv render API (OpenGL ES 3)                     Aperture.Playback.Mpv / MpvRenderContext
+   │  draws into an EGL pbuffer
+ANGLE (EGL + GLES on Direct3D 11)                    Aperture.Video / AngleFrameSource
+   │  pbuffer wraps a D3D11 texture (EGL_D3D_TEXTURE_ANGLE) on Aperture's own device
+   │  CopyResource
+DXGI composition swap chain (B8G8R8A8, flip model)   Aperture.Video / VideoPresenter
+   │  ISwapChainPanelNative.SetSwapChain
+XAML SwapChainPanel, controls drawn above it          Aperture.App / SwapChainPanelBridge, PlayerView
+```
 
-**Path B: mpv's own window (`wid`) in a child HWND**
-libmpv renders with its native `gpu-next`/d3d11 output into a child window of the WinUI window. Best performance and HDR potential, least code in the render loop.
-Cost: the "airspace" problem. XAML cannot draw over a child HWND, so the auto-hiding controls must live in a separate owned, transparent top-level window kept in sync with moves, resizes, fullscreen and DPI changes. Unverified: how cleanly this behaves with WinUI 3 window management and Snap layouts.
+Why this path:
+- **Controls are plain XAML over the video.** The auto-hiding control bar, menus, info panel and toasts are ordinary XAML with Mica/Acrylic, keyboard focus and UI Automation. Path B (mpv's own child window) would need a second transparent top-level window kept in sync with moves, resizes, Snap, full screen and DPI, which is the least reliable part of either design.
+- **No vendor-specific interop.** ANGLE translates GL to D3D11 itself, so there is no dependency on `WGL_NV_DX_interop2` driver support. ANGLE shares the D3D11 device Aperture creates (`EGL_ANGLE_device_d3d`), so the frame never leaves the GPU; the only extra cost is one GPU texture copy per frame.
+- **It runs on WARP.** The same code works on the CI runners' software D3D11 device, so CI renders real frames and checks their pixels.
+- **A fallback exists.** If ANGLE cannot start (no D3D11 feature level 10, a broken driver), the presenter uses libmpv's software renderer and uploads frames with `UpdateSubresource`. `APERTURE_VIDEO_RENDERER=software` forces it for diagnosis. The playback-info panel shows which renderer is active.
 
-**M1 decision gate.** Both paths are prototyped against the same test clips and measured for: dropped frames at 4K60, CPU/GPU load, resize and fullscreen smoothness, overlay quality, multi-monitor DPI moves, and code size. The result and a recommendation come back to adi before the player UI is built on top of it, because this is the largest architectural decision in the project.
+Costs accepted:
+- **HDR is lost.** libmpv's GL output on an 8-bit swap chain tone-maps to SDR. An HDR path would need Path B or a future D3D11 render API in libmpv.
+- One GPU copy per frame and a second GL→D3D translation layer. Not yet measured at 4K60 on real hardware (CI has no GPU).
+- `Avalonia.Angle.Windows.Natives` is another native dependency (BSD-3-Clause; see dependencies.md).
 
-### 4.3 Threading and lifetime (applies to both paths)
+The presenter's render thread owns the D3D11 device, ANGLE display and context, and the swap chain. It waits on libmpv's update callback and redraws only for new frames or size changes. On device loss it rebuilds the pipeline, up to three times, before falling back to an error.
 
-- One `mpv_handle` per player session. A dedicated background thread runs `mpv_wait_event`; events are translated into immutable state records and marshalled to the UI through `DispatcherQueue`.
+### 4.3 Threading and lifetime
+
+- One `mpv_handle` per player session. A dedicated background thread runs `mpv_wait_event`; events are copied into managed records and state changes are posted to the UI through the `SynchronizationContext` captured when the engine is created. Position and duration are stored atomically instead, so the UI's 4 Hz refresh reads them without a post per frame.
 - Property changes (`time-pos`, `pause`, `duration`, `track-list`, `volume`) are observed with `mpv_observe_property`, not polled.
-- Commands are issued asynchronously (`mpv_command_async`) so the UI thread never blocks on mpv.
-- Disposal order is fixed: stop rendering → free the render context → `mpv_terminate_destroy` → join the event thread. `IPlaybackEngine` is `IAsyncDisposable` so this can be awaited.
-- mpv log messages are routed into Aperture's logger at `warn` level by default; file paths are not logged at default verbosity (privacy-conscious default).
+- Commands and property writes are asynchronous (`mpv_command_async`, `mpv_set_property_async`), so the UI thread never blocks on mpv.
+- Disposal order is fixed: stop the render thread and free the render context (`VideoPresenter.Dispose`) → stop the event thread with `mpv_wakeup` and join it → `mpv_terminate_destroy`. The event loop exits on *any* event once stopping, because libmpv clears a pending wakeup whenever it returns an event; waiting for the wakeup's own event hung intermittently in testing. If the thread does not stop within 5 seconds the handle is leaked and an error logged, rather than destroying it under a running thread.
+- mpv log messages are routed into Aperture's logger at `warn` level by default; the file path is replaced with `<file>` in Aperture's own log lines.
 
 ### 4.4 Media metadata
 
 During playback, libmpv already reports duration, chapters and the track list, so the player needs no separate probe. FFprobe is deferred to library scanning (M6), run as a separate process with a timeout so a malformed file cannot hang or crash the app. Whether FFprobe is needed at all, versus a headless libmpv instance, is decided in M6.
 
-### 4.5 Interim engine (Milestone 1)
+### 4.5 Engine integration (Milestone 2)
 
-adi's Milestone 1 is the design system, which needs real playback to judge the player screens honestly. Until the libmpv engine and its render path are decided, `Aperture.App/Playback/MediaFoundationEngine.cs` implements `IPlaybackEngine` with Windows Media Foundation (`MediaPlayer` shown in a `MediaPlayerElement`). It is real playback with real failures, limited to the codecs Windows has. Everything above it (views, history, progress recording) talks only to `IPlaybackEngine`, so the libmpv engine replaces one class. This is not the engine decision; that decision still comes back to adi with measurements.
+- `Aperture.Playback.Mpv` binds libmpv's C API by hand with `[LibraryImport]` (no wrapper package). `MpvLibrary` resolves `libmpv-2.dll` on Windows and `libmpv.so.2` on Linux and refuses any client API other than major version 2.
+- mpv is configured as an embedded engine: no user `mpv.conf`, scripts, OSC, OSD, key bindings or terminal output, and `ytdl=no`, so it never fetches anything from the network.
+- Before loading, the engine checks the file exists, has a video extension, and is readable and non-empty, so the common failures get specific messages without involving mpv. mpv's `end-file` error codes map to `NotFound`, `Unsupported`, `Damaged` or `Failed` (`MpvFailures`).
+- `vo=null` and `ao=null` let the same engine run headless in tests. The engine tests in `tests/Aperture.Playback.Mpv.Tests` play real files on Linux and Windows CI.
+- The Media Foundation interim engine from Milestone 1 has been removed.
 
 ## 5. Persistence
 

@@ -25,4 +25,13 @@ public class MediaFileTypesTests
     [Fact]
     public void Title_drops_the_folder_and_extension() =>
         Assert.Equal("Harbour Lights", MediaFileTypes.TitleFromPath(Path.Combine("videos", "Harbour Lights.mp4")));
+
+    [Theory]
+    [InlineData("film.srt", true)]
+    [InlineData("film.en.ASS", true)]
+    [InlineData("film.vtt", true)]
+    [InlineData("film.mkv", false)]
+    [InlineData("film", false)]
+    public void Subtitle_files_are_recognised(string path, bool expected) =>
+        Assert.Equal(expected, MediaFileTypes.IsSubtitleFile(path));
 }

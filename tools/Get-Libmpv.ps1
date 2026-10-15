@@ -42,6 +42,18 @@ function Expand-SevenZip([string] $archive, [string] $destination) {
     if ($LASTEXITCODE -ne 0) { throw "Neither 7-Zip nor tar could extract $archive. Install 7-Zip and try again." }
 }
 
+# Get-FileHash is a script function in Windows PowerShell 5.1's Utility module, and it fails to
+# load when this script is started from PowerShell 7 (as MSBuild does on CI), so hash with .NET.
+function Get-Sha256([string] $path) {
+    $stream = [System.IO.File]::OpenRead($path)
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { return ([System.BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLowerInvariant() }
+        finally { $sha.Dispose() }
+    }
+    finally { $stream.Dispose() }
+}
+
 function Get-Archive([string] $url, [string] $file) {
     $temp = Join-Path ([System.IO.Path]::GetTempPath()) "aperture-libmpv"
     New-Item -ItemType Directory -Force -Path $temp | Out-Null
@@ -64,7 +76,7 @@ if ($Discover) {
         $asset = $release.assets | Where-Object { $_.name -match $pattern } | Select-Object -First 1
         if (-not $asset) { Write-Host "  $rid : no asset matches $pattern"; continue }
         $archive = Get-Archive $asset.browser_download_url $asset.name
-        $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+        $hash = Get-Sha256 $archive
         Write-Host "  $rid : $($asset.name) sha256=$hash size=$($asset.size)"
         $probe = Join-Path ([System.IO.Path]::GetTempPath()) "aperture-libmpv-probe-$rid"
         Expand-SevenZip $archive $probe
@@ -87,7 +99,7 @@ if ((Test-Path $dll) -and (Test-Path $stamp) -and ((Get-Content -Raw $stamp).Tri
 
 $url = "https://github.com/$($pin.repository)/releases/download/$($pin.release)/$($entry.file)"
 $archive = Get-Archive $url $entry.file
-$hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+$hash = Get-Sha256 $archive
 if ($hash -ne $entry.sha256) {
     Remove-Item -Force $archive
     throw "libmpv download for $RuntimeIdentifier has SHA-256 $hash, expected $($entry.sha256). Nothing was installed."

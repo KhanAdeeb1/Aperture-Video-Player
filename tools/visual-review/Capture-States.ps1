@@ -753,12 +753,20 @@ Step 'Episodes' {
     Assert-Playing $p $third 25
     Note 'Autoplay opened S1 E3 when the countdown ended'
 
-    # The correction panel, from More options.
-    Start-Sleep -Seconds 2
-    Move-MouseToCenter $p
-    Invoke-Element (Find-Element $p 'MoreButton')
-    Start-Sleep -Milliseconds 800
-    Invoke-Element (Find-InApp $p 'SegmentsMenuItem' 5)
+    # The correction panel, from More options. It is enabled once the file's fingerprint is
+    # known, which takes a moment after autoplay opens the episode; the menu reads it on opening.
+    $deadline = (Get-Date).AddSeconds(20)
+    while ($true) {
+        Start-Sleep -Seconds 2
+        Move-MouseToCenter $p
+        Invoke-Element (Find-Element $p 'MoreButton')
+        Start-Sleep -Milliseconds 800
+        $item = Find-InApp $p 'SegmentsMenuItem' 5
+        if ($item.Current.IsEnabled) { break }
+        if ((Get-Date) -gt $deadline) { throw 'Intro and credits stayed unavailable for S1 E3' }
+        Send-Keys $p '{ESC}'
+    }
+    Invoke-Element $item
     Start-Sleep -Seconds 1
     Find-Element $p 'ConfirmSegmentButton' 3 | Out-Null
     Move-MouseAway

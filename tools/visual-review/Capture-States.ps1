@@ -427,6 +427,169 @@ Step 'Damaged file' {
     Stop-Aperture $p
 }
 
+Step 'Sync and subtitle look panel, shortcuts panel' {
+    $p = Start-Aperture (Media 'Night Market.mkv')
+    Start-Sleep -Seconds 3
+    Send-Keys $p 'xxx'
+    Start-Sleep -Milliseconds 600
+    Save-Shot $p '47-subtitle-delay-toast'
+    Send-Keys $p 'g'
+    Start-Sleep -Seconds 1
+    $offset = (Find-Element $p 'SubtitleOffsetText').Current.Name
+    Note "Subtitle offset after three presses of X: $offset"
+    if ($offset -notmatch '0\.3') { throw "the subtitle offset reads '$offset', expected +0.3 s" }
+    Save-Shot $p '48-adjust-panel'
+    Send-Keys $p '{ESC}'
+    Start-Sleep -Milliseconds 600
+    Send-Keys $p '{F1}'
+    Start-Sleep -Seconds 1
+    Find-Element $p 'ShortcutsCloseButton' | Out-Null
+    Save-Shot $p '49-shortcuts-panel'
+    Send-Keys $p '{ESC}'
+    Stop-Aperture $p
+}
+
+Step 'Shortcut editor' {
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Send-Keys $p '^,'
+    Start-Sleep -Seconds 1
+    Invoke-Element (Find-Element $p 'ShortcutsButton')
+    Start-Sleep -Seconds 1
+    Move-MouseAway
+    Save-Shot $p '50-shortcut-editor'
+    Send-Keys $p '{ESC}'
+    Stop-Aperture $p
+}
+
+function Get-CardCount($p) {
+    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'MediaCard')
+    return @((Find-Element $p 'LibraryItems').FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)).Count
+}
+
+function Wait-ScanDone($p, [int] $seconds = 60) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        $cancel = $null
+        try { $cancel = Find-Element $p 'CancelScanButton' 1 } catch { }
+        if (-not $cancel -or $cancel.Current.IsOffscreen) { return }
+        Start-Sleep -Milliseconds 500
+    }
+    throw 'the scan did not finish'
+}
+
+Step 'Library' {
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Send-Keys $p '^l'
+    Start-Sleep -Seconds 1
+    Move-MouseAway
+    Save-Shot $p '60-library-no-folders'
+
+    # Add the test library through the real folder picker: type its path, then choose it.
+    Invoke-Element (Find-Element $p 'AddFirstFolderButton')
+    Start-Sleep -Seconds 3
+    [System.Windows.Forms.SendKeys]::SendWait((Media 'Library'))
+    [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+    Start-Sleep -Seconds 2
+    $picker = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+        [System.Windows.Automation.TreeScope]::Children,
+        (New-Object System.Windows.Automation.AndCondition(
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)),
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty, '#32770')))))
+    if ($picker) {
+        $select = $picker.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, '1')))
+        if (-not $select) { throw 'the folder picker has no Select Folder button' }
+        Invoke-Element $select
+        Start-Sleep -Seconds 2
+    }
+    Save-Shot $p '61-add-folder-kind'
+    Send-Keys $p '{ENTER}'
+    Start-Sleep -Milliseconds 800
+    Save-Shot $p '62-library-scanning'
+    Wait-ScanDone $p
+    Start-Sleep -Seconds 2
+    Move-MouseAway
+    Save-Shot $p '63-library'
+    $first = Get-CardCount $p
+    Note "Library after the first scan: $first cards"
+    if ($first -lt 8) { throw "only $first library items appeared" }
+
+    Invoke-Element (Find-Element $p 'ScanButton')
+    Start-Sleep -Seconds 1
+    Wait-ScanDone $p
+    Start-Sleep -Seconds 2
+    $second = Get-CardCount $p
+    Note "Library after scanning again: $second cards"
+    if ($second -ne $first) { throw "scanning again changed the item count ($first -> $second)" }
+
+    $filter = Find-Element $p 'FilterBox'
+    $filter.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('night')
+    Start-Sleep -Seconds 1
+    Save-Shot $p '64-library-filtered'
+    $filter.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('')
+    Start-Sleep -Seconds 1
+
+    Set-WindowSize $p 1024 700
+    Save-Shot $p '65-library-1024'
+    Set-WindowSize $p 1280 800
+
+    # The item with nothing to go on is marked; open its menu from the keyboard and check it.
+    $cards = (Find-Element $p 'LibraryItems').FindAll([System.Windows.Automation.TreeScope]::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'MediaCard')))
+    $untitled = $cards | Where-Object { $_.Current.Name -like '*Untitled Project*' } | Select-Object -First 1
+    if (-not $untitled) { throw 'Untitled Project is not in the library' }
+    $untitled.SetFocus()
+    Start-Sleep -Milliseconds 400
+    [System.Windows.Forms.SendKeys]::SendWait('+{F10}')
+    Start-Sleep -Seconds 1
+    Save-Shot $p '66-card-menu'
+    $check = (Get-Root $p).FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Check details…')))
+    if (-not $check) { throw 'the card menu has no Check details item' }
+    Invoke-Element $check
+    Start-Sleep -Seconds 1
+    Find-Element $p 'TitleBox' | Out-Null
+    Save-Shot $p '67-edit-details'
+    Send-Keys $p '{ESC}'
+    Start-Sleep -Milliseconds 600
+
+    Send-Keys $p '%{LEFT}'
+    Start-Sleep -Seconds 2
+    Move-MouseAway
+    Save-Shot $p '68-home-with-library'
+    Stop-Aperture $p
+
+    # The library is read back from disk after a restart.
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Send-Keys $p '^l'
+    Start-Sleep -Seconds 2
+    $after = Get-CardCount $p
+    Note "Library after a restart: $after cards"
+    if ($after -ne $first) { throw "the library changed across a restart ($first -> $after)" }
+    Stop-Aperture $p
+}
+
+Step 'Resume choice' {
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Send-Keys $p '^,'
+    Start-Sleep -Seconds 1
+    (Find-Element $p 'ResumeBox').SetFocus()
+    [System.Windows.Forms.SendKeys]::SendWait('{DOWN}')
+    Start-Sleep -Seconds 1
+    Stop-Aperture $p
+
+    $p = Start-Aperture (Media 'Harbour Lights.mp4')
+    Start-Sleep -Seconds 3
+    Find-Element $p 'ResumeButton' | Out-Null
+    Move-MouseAway
+    Save-Shot $p '35-resume-choice'
+    Stop-Aperture $p
+}
+
 # ---------------------------------------------------------------------------------------
 $logFile = Join-Path $dataDir 'Logs\aperture.log'
 if (Test-Path $logFile) { Copy-Item $logFile (Join-Path $OutDir 'aperture.log') }

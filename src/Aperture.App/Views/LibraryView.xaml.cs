@@ -160,14 +160,14 @@ public sealed partial class LibraryView : UserControl
     {
         if (!_loaded)
         {
-            VisualStateManager.GoToState(this, "Loading", false);
+            VisualStateManager.GoToState(this, "LoadingState", false);
             return;
         }
 
         if (_snapshot.Folders.Count == 0)
         {
             ItemsGrid.ItemsSource = null;
-            VisualStateManager.GoToState(this, "NoFolders", false);
+            VisualStateManager.GoToState(this, "NoFoldersState", false);
             return;
         }
 
@@ -183,7 +183,7 @@ public sealed partial class LibraryView : UserControl
         ItemsGrid.ItemsSource = entries.Select(MediaCardModel.FromLibrary).ToList();
         if (entries.Count > 0)
         {
-            VisualStateManager.GoToState(this, "Items", false);
+            VisualStateManager.GoToState(this, "ItemsState", false);
             return;
         }
 
@@ -209,7 +209,7 @@ public sealed partial class LibraryView : UserControl
             EmptyText.Text = "Aperture sorts files by their names and folders. If something landed in the wrong place, right-click it and choose Edit details.";
         }
 
-        VisualStateManager.GoToState(this, "Empty", false);
+        VisualStateManager.GoToState(this, "EmptyState", false);
     }
 
     private void ShowProgress(ScanProgress? progress)

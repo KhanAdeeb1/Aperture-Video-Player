@@ -76,4 +76,34 @@ head -c 400000 /dev/urandom > "$out/Damaged Copy.mp4"
 # Not a video at all.
 printf 'Films to watch this winter\n' > "$out/Reading List.txt"
 
-ls -la "$out"
+# A small library tree for the library screens. Names follow common conventions so the
+# parser sorts them; two copies of one film at different sizes exercise copy detection, and
+# "Untitled Project" has nothing to go on, so it is shown as needing a check.
+lib="$out/Library"
+libclip() { # relative-path WxH colour seconds
+  local path="$lib/$1"
+  mkdir -p "$(dirname "$path")"
+  ffmpeg -hide_banner -loglevel error -y \
+    -f lavfi -i "color=c=$3:s=$2:r=12:d=$4,format=yuv420p" \
+    -f lavfi -i "sine=frequency=262:sample_rate=48000:d=$4" -af volume=0.03 \
+    -c:v libx264 -preset ultrafast -crf 30 -c:a aac -b:a 48k -shortest "$path"
+}
+libclip "Movies/Harbour Lights (2019)/Harbour Lights (2019) 720p.mp4" 1280x720 0x1b2a41 20
+libclip "Movies/Harbour Lights (2019)/Harbour Lights (2019) 360p.mp4" 640x360 0x1b2a41 20
+libclip "Movies/Night.Drive.2021.mp4" 960x540 0x1b4965 20
+libclip "Movies/Paper Boats (2017).mp4" 960x540 0xd9776b 20
+libclip "Shows/Night Shift/Season 1/Night Shift S01E01 Pilot.mp4" 960x540 0x3e6e7e 20
+libclip "Shows/Night Shift/Season 1/Night Shift S01E02 The Long Hour.mp4" 960x540 0x2a1f3d 20
+libclip "Shows/Night Shift/Season 1/Night Shift S01E03.mp4" 960x540 0x62b6cb 20
+libclip "Personal/VID_20240612_181500.mp4" 960x540 0x8fa68a 20
+libclip "Personal/2023-08-14 Beach day.mp4" 960x540 0xe8c39e 20
+libclip "Personal/Untitled Project.mp4" 960x540 0x6b5a45 20
+mkdir -p "$lib/Podcasts/Design Notes"
+ffmpeg -hide_banner -loglevel error -y -f lavfi -i "sine=frequency=196:sample_rate=44100:d=30" -af volume=0.03 \
+  -c:a libmp3lame -b:a 64k "$lib/Podcasts/Design Notes/Design Notes Episode 12.mp3"
+# Ignored by the scanner: a sample clip and a text file.
+libclip "Movies/Harbour Lights (2019)/Sample/sample.mp4" 640x360 0x000000 3
+printf 'notes\n' > "$lib/Movies/notes.txt"
+echo "made the library tree"
+
+ls -laR "$out"

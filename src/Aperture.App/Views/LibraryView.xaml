@@ -14,19 +14,19 @@
     <Grid x:Name="Root">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="ContentStates">
-                <VisualState x:Name="Loading" />
-                <VisualState x:Name="NoFolders">
+                <VisualState x:Name="LoadingState" />
+                <VisualState x:Name="NoFoldersState">
                     <VisualState.Setters>
                         <Setter Target="NoFoldersPanel.Visibility" Value="Visible" />
                         <Setter Target="Toolbar.Visibility" Value="Collapsed" />
                     </VisualState.Setters>
                 </VisualState>
-                <VisualState x:Name="Items">
+                <VisualState x:Name="ItemsState">
                     <VisualState.Setters>
                         <Setter Target="ItemsScroller.Visibility" Value="Visible" />
                     </VisualState.Setters>
                 </VisualState>
-                <VisualState x:Name="Empty">
+                <VisualState x:Name="EmptyState">
                     <VisualState.Setters>
                         <Setter Target="EmptyPanel.Visibility" Value="Visible" />
                     </VisualState.Setters>

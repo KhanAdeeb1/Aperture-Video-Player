@@ -42,6 +42,27 @@ Expected: the first-launch screen ("Open a video to begin"). Open a video with C
 
 Set `APERTURE_VIDEO_RENDERER=software` to force the software renderer (useful to tell a GPU driver problem from an engine problem). Press I during playback for the active renderer, decoder and stream details.
 
+## Release build (installer and portable zip)
+
+On Windows with the .NET 10 SDK and [Inno Setup 6](https://jrsoftware.org/isdl.php):
+
+```powershell
+pwsh tools/Build-Release.ps1 -Platform x64      # or ARM64
+```
+
+It publishes the app self-contained (with the media server in `Server\`, libmpv, ANGLE, the licence and notices), refuses a publish that lacks the compiled XAML resources (`.pri`), and writes to `artifacts/release`: `Aperture-<version>-<platform>-setup.exe`, `Aperture-<version>-<platform>-portable.zip` and `SHA256SUMS-<platform>.txt`. The version is `<Version>` in `Directory.Build.props`.
+
+The packaging tests run the result on a clean Windows profile:
+
+```powershell
+# install an older installer, upgrade to the new one while the app and server run, open a file, uninstall
+powershell -File tools/packaging/Test-Install.ps1 -OldSetup <older setup.exe> -NewSetup <new setup.exe> -Video <a video>
+# open and close the app N times, then play continuously and sample memory, CPU and handles
+powershell -File tools/packaging/Test-Soak.ps1 -Exe <Aperture.exe> -Video <a long video> -OutDir <folder> -Minutes 120 -Cycles 50
+```
+
+`Test-Install.ps1` refuses to run on a PC where Aperture is already installed, and changes the current user's Start menu and registry, so run it in a VM or a throwaway account. CI's "Release package" job runs both (a 10-minute soak); the [Release workflow](../.github/workflows/release.yml) runs the two-hour soak and, for a `v*` tag, makes a draft GitHub release. Publishing a release is done by a person: tag `v<version>` on the default branch, wait for the workflow, review the draft and publish it.
+
 ## On Linux or macOS
 
 Only the platform-neutral projects build there:
@@ -84,6 +105,7 @@ Without `APERTURE_TEST_MEDIA`, or without libmpv, the file tests are reported as
 - **Test media**: an Ubuntu job generates the visual-review clips and the engine test files with FFmpeg.
 - **libmpv engine tests** on Ubuntu (distribution `libmpv2`) and Windows (the pinned build). The measured results table is written to the job summary.
 - **Windows app build** for `x64` and `ARM64`, checking that `libmpv-2.dll` and `av_libglesv2.dll` are next to the app, with a launch smoke test on x64, and a check that the bundled media server starts in the background, answers `status` and stops.
+- **Release package** for `x64` and `ARM64`: builds the installer and portable zip; on x64 it also runs the install/upgrade/uninstall test against a stand-in older installer and a short soak test. The files are uploaded as the `aperture-x64` and `aperture-ARM64` artifacts.
 - **Visual review**: a Windows job sets the display to 1920×1080, builds the app and runs `tools/visual-review/Capture-States.ps1`, which drives the real app through every state with keyboard, mouse and UI Automation and saves a screenshot of each. It checks rendered pixels on an orientation clip (amber top, blue bottom) with the GPU (ANGLE on WARP) and software renderers, windowed and full screen. Screenshots, notes and the app log are uploaded as the `visual-review` artifact; on pushes, downscaled copies are also committed to the `ci/visual-review` branch so they can be viewed without downloading the artifact.
 
 To run the visual review locally on Windows (it uses a throwaway data folder, never your own):

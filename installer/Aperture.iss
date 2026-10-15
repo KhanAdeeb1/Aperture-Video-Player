@@ -63,6 +63,11 @@ Name: "desktopicon"; Description: "Add a desktop shortcut"; Flags: unchecked
 ; Program files from an earlier version (never the user's data, which lives elsewhere).
 Type: filesandordirs; Name: "{app}\*"
 
+[UninstallDelete]
+; Anything left in the program folder, such as files a component wrote next to itself. The folder
+; is always Aperture's own (the install folder can't be changed), so nothing else is in it.
+Type: filesandordirs; Name: "{app}"
+
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 

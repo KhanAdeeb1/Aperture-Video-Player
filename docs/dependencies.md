@@ -2,7 +2,13 @@
 
 Every dependency must appear here with its license and the reason it is needed before it is added to `Directory.Packages.props` or `third_party/`. "Checked" means the fact was looked up on the date shown; it is not legal advice.
 
-## In use (Milestones 2 to 9)
+## Licence decision (Milestone 10)
+
+**Aperture is released under GPL-3.0-or-later** ([LICENSE](../LICENSE)), chosen by adi on 2026-10-15, so it can ship the pinned GPL build of libmpv as it is. The libraries inside that build were read from the DLL itself and are listed, with their licences, in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md); the notices, the GPL and the other licence texts (`third_party/licenses/`) are installed next to `Aperture.exe`. The build contains no non-free parts (no `fdk-aac`). Corresponding source for libmpv and its libraries is pointed to (the pinned shinchiro release and each project's source at the versions the build names), not mirrored in this repository; mirroring it is listed as unresolved in the [Milestone 10 report](reports/milestone-10.md#5-known-limitations).
+
+Milestone 10 added no packages. The installer is made with Inno Setup 6 (build tool only, below).
+
+## In use (Milestones 2 to 10)
 
 Milestone 9 added no packages. Seek previews use a second instance of the libmpv already shipped; clearer dialogue and even volume use FFmpeg filters inside that libmpv (`dialoguenhance`, `dynaudnorm`); the clipboard report uses Windows' own `DataTransfer` API. Local transcription was not built: it would need a speech model (for example whisper.cpp and a model file of 75 MB or more) and is waiting for a decision.
 
@@ -20,12 +26,14 @@ Milestones 3, 4 and 5 added no packages and no native libraries. Milestone 5 rea
 | Microsoft.WindowsAppSDK | 2.5.1 | Microsoft Software License (requires acceptance) | WinUI 3 and windowing APIs | Latest stable on NuGet, published 2026-09-16 (checked). It is a metapackage that also pulls AI, ML, Search and Widgets components; switching to only the WinUI/Foundation component packages to shrink the self-contained app is to be evaluated in M5 |
 | Microsoft.Windows.SDK.BuildTools | 10.0.28000.2705 | Microsoft Software License | Windows SDK build tooling required by WinUI projects | Build-time only |
 | Microsoft.Data.Sqlite | 10.0.13 | MIT (bundles SQLite via SQLitePCLRaw: SQLite public domain, SQLitePCLRaw Apache-2.0) | Settings and playback history (`Aperture.Data`) | Moved forward from M4 because the home screen's Continue Watching row needs real stored positions. Latest stable 10.0.x on NuGet (checked 2026-10-15) |
-| **libmpv** (`libmpv-2.dll`, client API 2.x) | Build `20261015` of [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261015), mpv git `492bae0768`; x64 and ARM64 | **Treated as GPLv2+.** mpv is GPL unless built with `-Dgpl=false`, and these builds are not advertised as LGPL. Not verified from the build's own configuration here | Playback engine (decode, demux, subtitles, scaling, audio) | Not committed. `tools/Get-Libmpv.ps1` downloads the pinned archive, checks its SHA-256 (in `third_party/libmpv.json`) and extracts the DLL at build time. The GPL vs LGPL release decision below is still open. On Linux CI the engine tests use Ubuntu's `libmpv2` package instead |
+| **libmpv** (`libmpv-2.dll`, client API 2.x) | Build `20261015` of [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261015), mpv git `492bae0768`; x64 and ARM64 | **GPLv2+** (with FFmpeg built `--enable-gpl`, including x264 and x265); compatible with Aperture's GPL-3.0-or-later | Playback engine (decode, demux, subtitles, scaling, audio) | Not committed. `tools/Get-Libmpv.ps1` downloads the pinned archive, checks its SHA-256 (in `third_party/libmpv.json`) and extracts the DLL at build time. Shipped in the release under the GPL decision above. On Linux CI the engine tests use Ubuntu's `libmpv2` package instead |
 | Vortice.Direct3D11, Vortice.DXGI | 3.8.3 | MIT | Typed Direct3D 11 and DXGI bindings for the video presenter (device, textures, composition swap chain) | Pulls in SharpGen.Runtime and SharpGen.Runtime.COM 2.4.2-beta (MIT) transitively; the beta tag is the version Vortice 3.8.x depends on. Hand-writing the COM vtables was the alternative and is more code to get wrong |
 | Avalonia.Angle.Windows.Natives | 2.1.27548.20260419 | BSD-3-Clause (ANGLE, Google) | ANGLE: OpenGL ES on Direct3D 11, so libmpv's GL renderer can draw into Aperture's D3D11 textures (architecture.md §4.2) | Ships `av_libglesv2.dll` for x64 and ARM64; exports carry an `EGL_`/`GL_` prefix. Used only as a native binary; no Avalonia UI code is referenced |
 | xunit, xunit.runner.visualstudio, Microsoft.NET.Test.Sdk | 2.9.3, 3.1.4, 17.14.1 | Apache-2.0 / Apache-2.0 / MIT | Unit tests | Test-only, not shipped. xunit v3 (4.x) is available; staying on v2 until there is a reason to move |
 
-## Planned, and open release decisions
+## Earlier planning notes (kept for history)
+
+The libmpv licence question in the first row was decided in Milestone 10 (GPL, above). The patent question for H.264, HEVC and AAC decoders remains open and is listed in the Milestone 10 report.
 
 | Dependency | License | Why | Milestone | Open questions |
 |---|---|---|---|---|
@@ -55,12 +63,14 @@ Milestones 3, 4 and 5 added no packages and no native libraries. Milestone 5 rea
 | Python 3 (preinstalled on Windows runners, CI only) | PSF | Runs `tools/visual-review/fake-tv.py`, the stand-in DLNA TV the visual review casts to (standard library only) |
 | gmrender-resurrect (`gmediarender`, Ubuntu package; used by hand, not in CI) | GPLv2+ | A real open-source DLNA renderer that casting was checked against; see build-and-test.md |
 | 7-Zip (preinstalled on Windows runners) or `tar` | LGPL / BSD | Extracts the pinned libmpv archive in `Get-Libmpv.ps1` |
+| [Inno Setup](https://jrsoftware.org/isinfo.php) 6 (Chocolatey `innosetup` in CI, if the runner lacks it) | Inno Setup License (free, including commercial use) | Makes the per-user installer from `installer/Aperture.iss`. Its setup and uninstall program is part of the installer; its licence is in THIRD-PARTY-NOTICES.md |
+| Pillow (Python, used once by hand) | MIT-CMU | `tools/brand/make-icon.py` draws `Assets/Aperture.ico`; the icon is committed, so Pillow isn't needed to build |
 
 ## Rules
 
 - No dependency is added without a row here and a sentence on why it is necessary.
 - Native binaries are never committed. `third_party/README.md` records source URL, version, SHA-256 and license for each, and a script fetches them.
-- `THIRD-PARTY-NOTICES.md` is generated before the first release from this register.
+- `THIRD-PARTY-NOTICES.md` is kept in step with this register and ships with every release.
 
 ## Removed
 

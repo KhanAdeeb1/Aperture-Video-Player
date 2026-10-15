@@ -2,18 +2,25 @@
 
 A calm, carefully designed video player for Windows 11, built with C#, WinUI 3 and libmpv.
 
-**Status:** Milestone 9 (below). In Milestone 5, shows in the library were put in order by season and episode, with next and previous episode, a Continue Watching row that offers what comes next, and watched tracking. Aperture finds intros, recaps and credits by comparing each episode's sound and picture with other episodes of the show, offers Skip buttons (skipping by itself only when you ask and the evidence is strong), shows the next episode with a countdown you can cancel, and lets you correct any times it found. Earlier milestones: On top of the libmpv player: customizable keyboard shortcuts, speed presets to 2× with optional pitch correction, subtitle and sound sync, subtitle size and colour, a resume-or-start-over choice, remembered per-file choices, and window placement that survives display changes. A personal library scans folders you choose (cancellable, in the background), sorts films, episodes, personal videos and podcasts by their names, finds duplicate copies, and lets you correct anything; online details and posters from TMDB are optional and use your own key. Aperture never changes your media files.
+**Status: release 0.1.0 candidate (Milestone 10).** Everything from Milestones 1 to 9 is in one build with a Windows installer, but it has only been tested on GitHub's virtual Windows machines (no GPU, no sound device, one display) and is **not production-ready**: hardware decoding, HDR, several monitors, display scaling above 100 %, Narrator, the ARM64 build, a real phone and YouTube playback on a real PC are still untested. See [tested configurations](docs/tested-configurations.md) and [the Milestone 10 report](docs/reports/milestone-10.md).
 
-**Milestone 9** adds optional extras that stay out of the way until used: a picture of the video when pointing at the timeline, bookmarks with notes (B), A–B looping (Shift+L), clearer dialogue (D) and even volume (E) processed on your PC, subtitles found in release `Subs` folders and by episode number, audio and subtitle language carried from one episode of a show to the next, and a "Copy details for a bug report" button that removes file names before anything leaves the app (it only goes to your clipboard). See [the Milestone 9 report](docs/reports/milestone-9.md) for what was left out and why.
+Aperture plays local video through libmpv with a calm, keyboard-friendly player; keeps a personal library of films, shows, personal videos and podcasts (never changing your files); finds intros and credits by comparing episodes; plays YouTube in YouTube's own player; lets phones on your home network watch your library; and plays on DLNA TVs. The full list is in [What Aperture does](docs/features.md).
 
-**Milestone 8** adds Play on a TV: Aperture finds DLNA TVs and media players on your home network, sends the video there (starting where you were, converting with your own FFmpeg only when the TV can't play the original), and becomes a remote for it, saving your place as it plays and handling a TV that disappears. Chromecast, AirPlay and Roku aren't supported; Windows+K or a cable covers those. See [Playing on a TV](docs/casting.md).
+## Install
 
-**Milestone 7** adds a media server: phones and tablets on your home network (or your own private network, such as Tailscale) can browse the folders you share and play them in the browser, with sign-in, encryption, positions synced with Aperture, and conversion with your own FFmpeg only when a device can't play the original. It runs on its own, separately from the app. See [Watching on your phone](docs/media-server.md).
+Download the installer from the repository's Releases page (or, between releases, the `aperture-x64` artifact of a CI run) and see [Installing, upgrading and removing](docs/install.md). Windows 11, x64 or ARM64, no administrator rights needed.
 
-**Milestone 6** adds a YouTube section: paste a link or search (with your own API key), watch in YouTube's own embedded player, keep a Saved list and Continue watching, and optionally see your liked videos and playlists after signing in with your own Google client. See [YouTube in Aperture](docs/youtube.md).
+## Licence
+
+Aperture is free software under the [GNU General Public License, version 3 or later](LICENSE). It includes libmpv and FFmpeg (GPL builds) and other components listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Documents
 
+- [What Aperture does](docs/features.md)
+- [Installing, upgrading and removing](docs/install.md)
+- [Tested configurations and media samples](docs/tested-configurations.md)
+- [Security review of the media server and casting](docs/security-review.md)
+- [Release notes](docs/release-notes.md)
 - [Milestone 0 audit and plan](docs/milestone-0-audit-and-plan.md): audit, risks, phased plan, definition of done for v0.1
 - [Design system](docs/design-system.md): tokens, components, design review answers, interaction and accessibility rules
 - [Architecture](docs/architecture.md): layers, modules, folder structure, playback engine evaluation
@@ -48,6 +55,9 @@ tests/               unit tests
 tools/visual-review  test-clip generator and the screenshot driver used by CI
 tools/test-media     engine test-file generator
 tools/Get-Libmpv.ps1 fetches the pinned libmpv build
+tools/Build-Release.ps1 builds the installer and portable zip
+tools/packaging     install/upgrade/uninstall and soak tests
+installer/          Inno Setup script
 third_party/         pins for native binaries (binaries themselves are not committed)
 docs/                design system, architecture, plan, reports
 ```

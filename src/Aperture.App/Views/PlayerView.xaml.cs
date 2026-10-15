@@ -70,6 +70,7 @@ public sealed partial class PlayerView : UserControl
     private bool _scrubbing;
     private bool _pointerOnControls;
     private bool _keyboardInControls;
+    private bool _focusNavigated;
     private bool _focusInPanel;
     private bool _menuOpen;
     private bool _pointerInside;
@@ -82,6 +83,10 @@ public sealed partial class PlayerView : UserControl
         Root.AddHandler(PointerMovedEvent, new PointerEventHandler(OnRootPointerMoved), handledEventsToo: true);
         CueArea.TranslationTransition = new Vector3Transition { Duration = Theme.Motion.Medium };
         ControlsPanel.SizeChanged += (_, _) => UpdateCueLift();
+
+        // Only Tab or arrow navigation into the controls keeps them up. Focus that Windows puts
+        // back on a button when a menu closes (also "keyboard" focus) must not pin them for good.
+        ControlsPanel.GettingFocus += (_, args) => _focusNavigated = args.Direction != FocusNavigationDirection.None;
 
         var dispatcher = DispatcherQueue.GetForCurrentThread();
         _ticker = dispatcher.CreateTimer();
@@ -1680,6 +1685,15 @@ public sealed partial class PlayerView : UserControl
 
     private void OnRootPointerExited(object sender, PointerRoutedEventArgs e)
     {
+        // PointerExited bubbles: leaving a part of the timeline or a button arrives here too
+        // while the pointer is still in the window.
+        var point = e.GetCurrentPoint(Root).Position;
+        if (point.X >= 1 && point.Y >= 1 && point.X < Root.ActualWidth - 1 && point.Y < Root.ActualHeight - 1)
+        {
+            _pointerOnControls = IsOverControls(e);
+            return;
+        }
+
         _pointerInside = false;
         _pointerOnControls = false;
         _cursor.Show();
@@ -1721,7 +1735,7 @@ public sealed partial class PlayerView : UserControl
     }
 
     private void OnControlsGotFocus(object sender, RoutedEventArgs e) =>
-        _keyboardInControls = e.OriginalSource is Control { FocusState: FocusState.Keyboard };
+        _keyboardInControls = _focusNavigated && e.OriginalSource is Control { FocusState: FocusState.Keyboard };
 
     private void OnControlsLostFocus(object sender, RoutedEventArgs e)
     {

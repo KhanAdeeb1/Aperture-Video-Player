@@ -137,9 +137,18 @@ Step 'Silent uninstall'
 $uninstaller = $new.UninstallString.Trim('"')
 $p = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -PassThru -Wait
 Check ($p.ExitCode -eq 0) "the uninstaller finished (exit $($p.ExitCode))"
-# The uninstaller removes itself from a copy in %TEMP%; give it a moment to finish.
-$deadline = (Get-Date).AddSeconds(30)
+# unins000.exe hands over to a copy of itself in %TEMP% (named _iu*.tmp) and exits at once, so
+# wait for that copy, which does the removing, to finish.
+$deadline = (Get-Date).AddMinutes(5)
+Start-Sleep -Seconds 2
+while ((Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like '_iu*' }) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
 while ((Test-Path $installDir) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+if (Test-Path $installDir) {
+    Write-Host '     left in the program folder:'
+    Get-ChildItem $installDir -Recurse -Force | Select-Object -First 20 | ForEach-Object { Write-Host "       $($_.FullName.Substring($installDir.Length))" }
+    Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($installDir, [StringComparison]::OrdinalIgnoreCase) } |
+        ForEach-Object { Write-Host "     still running from it: $($_.ProcessName) ($($_.Id))" }
+}
 Check (-not (Test-Path $installDir)) 'the program folder is gone'
 Check (-not (Test-Path $shortcut)) 'the Start menu entry is gone'
 Check (-not (Test-Path $uninstallKey)) 'the Installed apps entry is gone'

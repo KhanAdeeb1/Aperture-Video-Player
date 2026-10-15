@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Milestone 0 shell: an empty, correctly themed window with no controls.
+    The player surface and its controls arrive in Milestones 1 and 2.
+-->
+<Window
+    x:Class="Aperture.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Aperture">
+    <Grid Background="{StaticResource SurfaceBaseBrush}">
+        <TextBlock
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            FontSize="{StaticResource TypeCaptionSize}"
+            Foreground="{StaticResource TextTertiaryBrush}"
+            Text="Aperture" />
+    </Grid>
+</Window>

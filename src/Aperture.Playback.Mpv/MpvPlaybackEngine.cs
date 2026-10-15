@@ -43,6 +43,10 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
     private double _rate = 1;
     private AspectMode _aspect = AspectMode.Original;
     private double _subtitlePosition = 100;
+    private bool _preservePitch = true;
+    private TimeSpan _subtitleDelay;
+    private TimeSpan _audioDelay;
+    private string? _boxStyle;
     private int _renderContexts;
     private bool _disposed;
 
@@ -134,6 +138,36 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
         }
     }
 
+    public bool PreservePitch
+    {
+        get => _preservePitch;
+        set
+        {
+            _preservePitch = value;
+            _client.SetProperty("audio-pitch-correction", value);
+        }
+    }
+
+    public TimeSpan SubtitleDelay
+    {
+        get => _subtitleDelay;
+        set
+        {
+            _subtitleDelay = SyncOffset.Normalize(value);
+            _client.SetProperty("sub-delay", _subtitleDelay.TotalSeconds);
+        }
+    }
+
+    public TimeSpan AudioDelay
+    {
+        get => _audioDelay;
+        set
+        {
+            _audioDelay = SyncOffset.Normalize(value);
+            _client.SetProperty("audio-delay", _audioDelay.TotalSeconds);
+        }
+    }
+
     public AspectMode Aspect
     {
         get => _aspect;
@@ -218,6 +252,12 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
         client.Observe(SpeedId, "speed", MpvFormat.Double);
         client.Observe(TrackListId, "track-list", MpvFormat.String);
         client.Observe(EofId, "eof-reached", MpvFormat.Flag);
+
+        // A box behind subtitle lines needs mpv 0.38 or later; older builds keep the outline.
+        var borderStyles = client.GetString("option-info/sub-border-style/choices") ?? string.Empty;
+        engine._boxStyle = borderStyles.Contains("background-box", StringComparison.Ordinal) ? "background-box"
+            : borderStyles.Contains("opaque-box", StringComparison.Ordinal) ? "opaque-box"
+            : null;
         return engine;
     }
 
@@ -255,6 +295,10 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
 
         SetStatus(PlaybackStatus.Opening);
         _log("info", $"Opening a {Path.GetExtension(path).ToLowerInvariant()} file");
+
+        // Timing offsets belong to one file; the player re-applies any remembered for this one.
+        SubtitleDelay = TimeSpan.Zero;
+        AudioDelay = TimeSpan.Zero;
 
         // "start" is a global option: it applies to the next file loaded, so it is set
         // (or cleared) before every load.
@@ -385,6 +429,37 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
         }
 
         return null;
+    }
+
+    public void ApplySubtitleStyle(SubtitleStyle style)
+    {
+        ArgumentNullException.ThrowIfNull(style);
+        _client.SetProperty("sub-scale", style.Scale);
+        _client.SetProperty("sub-color", style.ColorHex);
+        if (style.Background == SubtitleBackground.Box && _boxStyle is not null)
+        {
+            _client.SetProperty("sub-border-style", _boxStyle);
+            _client.SetProperty("sub-back-color", "#B3101113");
+            _client.SetProperty("sub-outline-color", "#B3101113");
+        }
+        else if (_boxStyle is not null)
+        {
+            // sub-outline-color is the 0.38+ name; older builds keep their default black outline.
+            _client.SetProperty("sub-border-style", "outline-and-shadow");
+            _client.SetProperty("sub-outline-color", "#FF000000");
+            _client.SetProperty("sub-back-color", "#00000000");
+        }
+    }
+
+    /// <summary>True when this libmpv build can draw a box behind subtitles.</summary>
+    public bool SupportsSubtitleBox => _boxStyle is not null;
+
+    public void StepFrame(bool forward)
+    {
+        if (_loaded)
+        {
+            _client.Command(forward ? "frame-step" : "frame-back-step");
+        }
     }
 
     public PlaybackDiagnostics GetDiagnostics() =>

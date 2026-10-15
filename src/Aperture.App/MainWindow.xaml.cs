@@ -22,6 +22,10 @@ namespace Aperture.App;
 /// window modes (windowed, full screen, mini-player), window-wide keyboard shortcuts,
 /// drag and drop, and the title bar.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Design",
+    "CA1001:Types that own disposable fields should be disposable",
+    Justification = "A Window is not disposed by its owner; the engine is disposed in OnAppWindowClosing, the end of the window's life.")]
 public sealed partial class MainWindow : Window
 {
     private const int DefaultWidth = 1280;

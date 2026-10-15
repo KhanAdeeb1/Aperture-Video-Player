@@ -38,3 +38,15 @@ jobs:
           global-json-file: global.json
       - name: Build WinUI app
         run: dotnet build src/Aperture.App/Aperture.App.csproj -c Release -p:Platform=${{ matrix.platform }}
+      - name: Launch smoke test
+        if: matrix.platform == 'x64'
+        shell: pwsh
+        run: |
+          $exe = "src/Aperture.App/bin/x64/Release/net10.0-windows10.0.22621.0/win-x64/Aperture.exe"
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 15
+          $p.Refresh()
+          if ($p.HasExited) { throw "Aperture exited during startup with code $($p.ExitCode)" }
+          if ($p.MainWindowHandle -eq 0) { Stop-Process -Id $p.Id -Force; throw "Aperture is running but has no main window" }
+          Write-Host "Aperture started and opened its window: '$($p.MainWindowTitle)'"
+          Stop-Process -Id $p.Id -Force

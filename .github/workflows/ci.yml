@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   core-tests:
-    name: Core tests (${{ matrix.os }})
+    name: Core and data tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -22,7 +22,9 @@ jobs:
         with:
           global-json-file: global.json
       - name: Test platform-neutral projects
-        run: dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj -c Release
+        run: |
+          dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj -c Release
+          dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj -c Release
 
   windows-app:
     name: Build Windows app (${{ matrix.platform }})
@@ -43,6 +45,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = "src/Aperture.App/bin/x64/Release/net10.0-windows10.0.22621.0/win-x64/Aperture.exe"
+          $env:APERTURE_DATA_DIR = Join-Path $env:RUNNER_TEMP "aperture-smoke"
           $p = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 15
           $p.Refresh()
@@ -50,3 +53,58 @@ jobs:
           if ($p.MainWindowHandle -eq 0) { Stop-Process -Id $p.Id -Force; throw "Aperture is running but has no main window" }
           Write-Host "Aperture started and opened its window: '$($p.MainWindowTitle)'"
           Stop-Process -Id $p.Id -Force
+
+  test-media:
+    name: Generate test media
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install FFmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Generate synthetic clips
+        run: tools/visual-review/make-test-media.sh "$RUNNER_TEMP/test-media"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-media
+          path: ${{ runner.temp }}/test-media
+          retention-days: 3
+
+  visual-review:
+    name: Visual review screenshots
+    needs: test-media
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Prepare the runner (Media Foundation, 1920x1080 display)
+        shell: powershell
+        run: |
+          # Windows Server runners ship without the Media Foundation feature that
+          # Windows 11 has built in; the interim playback engine needs it.
+          $result = Install-WindowsFeature Server-Media-Foundation
+          if (-not $result.Success) { throw "Media Foundation could not be installed" }
+          Set-DisplayResolution -Width 1920 -Height 1080 -Force
+      - name: Build WinUI app
+        run: dotnet build src/Aperture.App/Aperture.App.csproj -c Release -p:Platform=x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-media
+          path: ${{ runner.temp }}/test-media
+      - name: Drive the app and capture each state
+        shell: powershell
+        run: >
+          tools/visual-review/Capture-States.ps1
+          -Exe src/Aperture.App/bin/x64/Release/net10.0-windows10.0.22621.0/win-x64/Aperture.exe
+          -MediaDir "$env:RUNNER_TEMP/test-media"
+          -OutDir "$env:RUNNER_TEMP/visual-review"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: visual-review
+          path: |
+            ${{ runner.temp }}/visual-review/*.png
+            ${{ runner.temp }}/visual-review/*.txt
+            ${{ runner.temp }}/visual-review/*.log
+          retention-days: 14

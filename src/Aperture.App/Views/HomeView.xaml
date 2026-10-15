@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Home. Primary task: get back to a video. The most important element is the
+    Continue Watching row; everything else is quieter. With nothing played yet the
+    screen is a single, complete invitation to open a file.
+-->
+<UserControl
+    x:Class="Aperture.App.Views.HomeView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Aperture.App.Views">
+
+    <Grid x:Name="Root">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="ContentStates">
+                <VisualState x:Name="Loading" />
+                <VisualState x:Name="FirstLaunch">
+                    <VisualState.Setters>
+                        <Setter Target="FirstLaunchPanel.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Shelves">
+                    <VisualState.Setters>
+                        <Setter Target="ShelvesScroller.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="SearchResults">
+                    <VisualState.Setters>
+                        <Setter Target="ResultsScroller.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="NoResults">
+                    <VisualState.Setters>
+                        <Setter Target="NoResultsPanel.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+
+            <VisualStateGroup x:Name="WidthStates">
+                <VisualState x:Name="Wide">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="900" />
+                    </VisualState.StateTriggers>
+                </VisualState>
+                <VisualState x:Name="Narrow">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="ShelvesStack.Margin" Value="{StaticResource PageGutterNarrow}" />
+                        <Setter Target="ResultsStack.Margin" Value="{StaticResource PageGutterNarrow}" />
+                        <Setter Target="ContinueRepeater.Margin" Value="24,0,24,0" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <!-- ===== Shelves ===== -->
+        <ScrollViewer
+            x:Name="ShelvesScroller"
+            HorizontalScrollMode="Disabled"
+            VerticalScrollBarVisibility="Auto"
+            Visibility="Collapsed">
+            <StackPanel Padding="0,16,0,48">
+                <StackPanel x:Name="ContinueSection">
+                    <TextBlock
+                        x:Name="ContinueHeader"
+                        Margin="40,0,40,16"
+                        AutomationProperties.HeadingLevel="Level2"
+                        Style="{StaticResource SubtitleTextStyle}"
+                        Text="Continue watching" />
+                    <!-- The row bleeds to the window edge so a partly visible card signals more. -->
+                    <ScrollViewer
+                        x:Name="ContinueScroller"
+                        HorizontalScrollBarVisibility="Hidden"
+                        HorizontalScrollMode="Enabled"
+                        VerticalScrollMode="Disabled"
+                        AutomationProperties.Name="Continue watching"
+                        XYFocusKeyboardNavigation="Enabled">
+                        <ItemsRepeater x:Name="ContinueRepeater" Margin="40,0,40,0" ElementPrepared="OnContinueCardPrepared">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="16" />
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate>
+                                    <local:MediaCard Width="{StaticResource ArtworkLargeWidth}" />
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+                </StackPanel>
+
+                <StackPanel x:Name="ShelvesStack" Margin="{StaticResource PageGutter}">
+                    <TextBlock
+                        x:Name="RecentHeader"
+                        Margin="0,40,0,16"
+                        AutomationProperties.HeadingLevel="Level2"
+                        Style="{StaticResource SubtitleTextStyle}"
+                        Text="Recently played" />
+                    <ItemsRepeater x:Name="RecentRepeater" ElementPrepared="OnRecentCardPrepared">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout
+                                ItemsStretch="Fill"
+                                MinColumnSpacing="16"
+                                MinItemWidth="{StaticResource ArtworkSmallWidth}"
+                                MinRowSpacing="24" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate>
+                                <local:MediaCard />
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ===== Search results ===== -->
+        <ScrollViewer
+            x:Name="ResultsScroller"
+            HorizontalScrollMode="Disabled"
+            VerticalScrollBarVisibility="Auto"
+            Visibility="Collapsed">
+            <StackPanel x:Name="ResultsStack" Margin="{StaticResource PageGutter}" Padding="0,16,0,48">
+                <TextBlock
+                    x:Name="ResultsHeader"
+                    Margin="0,0,0,16"
+                    AutomationProperties.HeadingLevel="Level2"
+                    AutomationProperties.LiveSetting="Polite"
+                    Style="{StaticResource SubtitleTextStyle}" />
+                <ItemsRepeater x:Name="ResultsRepeater" ElementPrepared="OnRecentCardPrepared">
+                    <ItemsRepeater.Layout>
+                        <UniformGridLayout
+                            ItemsStretch="Fill"
+                            MinColumnSpacing="16"
+                            MinItemWidth="{StaticResource ArtworkSmallWidth}"
+                            MinRowSpacing="24" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate>
+                            <local:MediaCard />
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ===== No results ===== -->
+        <StackPanel
+            x:Name="NoResultsPanel"
+            MaxWidth="420"
+            Margin="24"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="8"
+            Visibility="Collapsed">
+            <FontIcon
+                Margin="0,0,0,8"
+                FontFamily="{StaticResource FontIcons}"
+                FontSize="{StaticResource IconStatus}"
+                Foreground="{ThemeResource TextTertiaryBrush}"
+                Glyph="&#xE721;" />
+            <TextBlock
+                x:Name="NoResultsTitle"
+                AutomationProperties.LiveSetting="Polite"
+                HorizontalTextAlignment="Center"
+                Style="{StaticResource SubtitleTextStyle}" />
+            <TextBlock
+                HorizontalTextAlignment="Center"
+                Style="{StaticResource BodyTextStyle}"
+                Text="Search looks through videos you have played. Folder libraries arrive in a later version." />
+        </StackPanel>
+
+        <!-- ===== First launch / empty ===== -->
+        <Grid
+            x:Name="FirstLaunchPanel"
+            Padding="24,0,24,48"
+            Visibility="Collapsed">
+            <StackPanel
+                MaxWidth="440"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+                <!-- The Aperture mark: an opening with light behind it. -->
+                <Grid
+                    Width="64"
+                    Height="64"
+                    Margin="0,0,0,28"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AccessibilityView="Raw">
+                    <Ellipse Stroke="{ThemeResource StrokeStrongBrush}" StrokeThickness="1.5" />
+                    <Ellipse
+                        Width="40"
+                        Height="40"
+                        Stroke="{ThemeResource StrokeSubtleBrush}"
+                        StrokeThickness="1" />
+                    <Ellipse
+                        Width="14"
+                        Height="14"
+                        Fill="{ThemeResource AccentBrush}" />
+                </Grid>
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level1"
+                    HorizontalTextAlignment="Center"
+                    Style="{StaticResource TitleTextStyle}"
+                    Text="Open a video to begin" />
+                <TextBlock
+                    Margin="0,12,0,0"
+                    HorizontalTextAlignment="Center"
+                    Style="{StaticResource BodyTextStyle}"
+                    Text="Aperture keeps your place in everything you watch. The videos you play will appear here, ready to pick up where you left off." />
+                <Button
+                    x:Name="FirstLaunchOpenButton"
+                    Margin="0,28,0,0"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="FirstLaunchOpenButton"
+                    Click="OnOpenClick"
+                    Style="{StaticResource ApertureAccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon
+                            FontFamily="{StaticResource FontIcons}"
+                            FontSize="{StaticResource IconMedium}"
+                            Glyph="&#xE8E5;" />
+                        <TextBlock Text="Open file" />
+                    </StackPanel>
+                </Button>
+                <TextBlock
+                    Margin="0,16,0,0"
+                    HorizontalTextAlignment="Center"
+                    Style="{StaticResource CaptionTextStyle}"
+                    Text="Ctrl+O, or drop a video anywhere in this window" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -1,0 +1,364 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Playback. Primary task: watch. The video is the only permanent element; the
+    timeline and transport fade in on pointer or keyboard activity and fade out after
+    the idle delay from Settings while playing. Secondary controls (speed, file
+    location) live in the More menu, not on the bar.
+-->
+<UserControl
+    x:Class="Aperture.App.Views.PlayerView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Aperture.App.Views">
+
+    <UserControl.Resources>
+        <local:SecondsToClockConverter x:Key="SecondsToClock" />
+    </UserControl.Resources>
+
+    <Grid
+        x:Name="Root"
+        Background="{ThemeResource SurfaceVideoBrush}"
+        PointerExited="OnRootPointerExited"
+        PointerMoved="OnRootPointerMoved">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="StatusStates">
+                <VisualState x:Name="Opening">
+                    <VisualState.Setters>
+                        <Setter Target="OpeningPanel.Visibility" Value="Visible" />
+                        <Setter Target="OpeningRing.IsActive" Value="True" />
+                        <Setter Target="ControlsPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="BottomScrim.Visibility" Value="Collapsed" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Ready" />
+                <VisualState x:Name="Error">
+                    <VisualState.Setters>
+                        <Setter Target="ErrorPanel.Visibility" Value="Visible" />
+                        <Setter Target="ControlsPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="BottomScrim.Visibility" Value="Collapsed" />
+                        <Setter Target="TopScrim.Visibility" Value="Collapsed" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="ErrorToneStates">
+                <VisualState x:Name="CriticalTone" />
+                <VisualState x:Name="NeutralTone">
+                    <VisualState.Setters>
+                        <Setter Target="ErrorGlyph.Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="LayoutStates">
+                <VisualState x:Name="Full" />
+                <VisualState x:Name="Mini">
+                    <VisualState.Setters>
+                        <Setter Target="ControlsPanel.Margin" Value="8,0,8,4" />
+                        <Setter Target="VolumeSlider.Visibility" Value="Collapsed" />
+                        <Setter Target="VolumeButton.Visibility" Value="Collapsed" />
+                        <Setter Target="TimeText.Visibility" Value="Collapsed" />
+                        <Setter Target="MoreButton.Visibility" Value="Collapsed" />
+                        <Setter Target="FullscreenButton.Visibility" Value="Collapsed" />
+                        <Setter Target="ResumeNotice.Visibility" Value="Collapsed" />
+                        <Setter Target="TopScrim.Height" Value="56" />
+                        <Setter Target="BottomScrim.Height" Value="120" />
+                        <Setter Target="ErrorStack.Margin" Value="16" />
+                        <Setter Target="ErrorMessage.Visibility" Value="Collapsed" />
+                        <Setter Target="ErrorDetail.Visibility" Value="Collapsed" />
+                        <Setter Target="ErrorActions.Visibility" Value="Collapsed" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <MediaPlayerElement
+            x:Name="Surface"
+            AreTransportControlsEnabled="False"
+            AutomationProperties.Name="Video"
+            IsTabStop="False"
+            Stretch="Uniform" />
+
+        <!-- Click toggles play; double-click toggles fullscreen. -->
+        <Border
+            x:Name="InputLayer"
+            Background="Transparent"
+            DoubleTapped="OnVideoDoubleTapped"
+            Tapped="OnVideoTapped" />
+
+        <!-- ===== Overlay: scrims and controls, faded as one ===== -->
+        <Grid x:Name="Overlay">
+            <Grid.OpacityTransition>
+                <ScalarTransition Duration="0:0:0.2" />
+            </Grid.OpacityTransition>
+
+            <Border
+                x:Name="TopScrim"
+                Height="112"
+                VerticalAlignment="Top"
+                Background="{ThemeResource VideoTopScrimBrush}"
+                IsHitTestVisible="False" />
+            <Border
+                x:Name="BottomScrim"
+                Height="200"
+                VerticalAlignment="Bottom"
+                Background="{ThemeResource VideoBottomScrimBrush}"
+                IsHitTestVisible="False" />
+
+            <Grid
+                x:Name="ControlsPanel"
+                Margin="24,0,24,12"
+                VerticalAlignment="Bottom"
+                GotFocus="OnControlsGotFocus"
+                LostFocus="OnControlsLostFocus"
+                PointerEntered="OnControlsPointerEntered"
+                PointerExited="OnControlsPointerExited">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Resume notice: appears only when a file starts from a saved position. -->
+                <Border
+                    x:Name="ResumeNotice"
+                    Margin="4,0,0,12"
+                    Padding="16,4,4,4"
+                    HorizontalAlignment="Left"
+                    Background="{ThemeResource VideoPanelBrush}"
+                    CornerRadius="{StaticResource RadiusLarge}"
+                    Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock
+                            x:Name="ResumeText"
+                            VerticalAlignment="Center"
+                            AutomationProperties.LiveSetting="Polite"
+                            Foreground="{ThemeResource TextOnVideoBrush}"
+                            Style="{StaticResource BodyTextStyle}" />
+                        <Button
+                            x:Name="StartOverButton"
+                            AutomationProperties.AutomationId="StartOverButton"
+                            Click="OnStartOverClick"
+                            Content="Start over"
+                            Foreground="{ThemeResource AccentBrush}"
+                            Style="{StaticResource QuietButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <Slider
+                    x:Name="Timeline"
+                    Grid.Row="1"
+                    AutomationProperties.AutomationId="Timeline"
+                    AutomationProperties.Name="Timeline"
+                    IsThumbToolTipEnabled="True"
+                    Maximum="1"
+                    Minimum="0"
+                    StepFrequency="0.5"
+                    ThumbToolTipValueConverter="{StaticResource SecondsToClock}"
+                    ValueChanged="OnTimelineValueChanged" />
+
+                <Grid Grid.Row="2" ColumnSpacing="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button
+                        x:Name="PlayPauseButton"
+                        AutomationProperties.AutomationId="PlayPauseButton"
+                        AutomationProperties.Name="Pause"
+                        Click="OnPlayPauseClick"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Pause (Space)">
+                        <FontIcon
+                            x:Name="PlayPauseGlyph"
+                            FontSize="{StaticResource IconLarge}"
+                            Glyph="&#xE769;"
+                            Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+
+                    <Button
+                        x:Name="VolumeButton"
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="MuteButton"
+                        AutomationProperties.Name="Mute"
+                        Click="OnMuteClick"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Mute (M)">
+                        <FontIcon
+                            x:Name="VolumeGlyph"
+                            Glyph="&#xE767;"
+                            Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+
+                    <Slider
+                        x:Name="VolumeSlider"
+                        Grid.Column="2"
+                        Width="96"
+                        Margin="0,0,12,0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="VolumeSlider"
+                        AutomationProperties.Name="Volume"
+                        Maximum="100"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnVolumeChanged"
+                        Value="100" />
+
+                    <TextBlock
+                        x:Name="TimeText"
+                        Grid.Column="3"
+                        AutomationProperties.AutomationId="TimeText"
+                        Style="{StaticResource VideoTimeTextStyle}" />
+
+                    <Button
+                        x:Name="MoreButton"
+                        Grid.Column="5"
+                        AutomationProperties.AutomationId="MoreButton"
+                        AutomationProperties.Name="More options"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="More options">
+                        <FontIcon Glyph="&#xE712;" Style="{StaticResource IconGlyphStyle}" />
+                        <Button.Flyout>
+                            <MenuFlyout
+                                x:Name="MoreMenu"
+                                Closed="OnFlyoutClosed"
+                                Opened="OnFlyoutOpened"
+                                Placement="TopEdgeAlignedRight">
+                                <MenuFlyoutSubItem x:Name="SpeedMenu" Text="Playback speed">
+                                    <MenuFlyoutSubItem.Icon>
+                                        <FontIcon Glyph="&#xEC4A;" />
+                                    </MenuFlyoutSubItem.Icon>
+                                    <RadioMenuFlyoutItem Click="OnSpeedClick" GroupName="Speed" Tag="0.5" Text="0.5×" />
+                                    <RadioMenuFlyoutItem Click="OnSpeedClick" GroupName="Speed" Tag="0.75" Text="0.75×" />
+                                    <RadioMenuFlyoutItem x:Name="NormalSpeedItem" Click="OnSpeedClick" GroupName="Speed" IsChecked="True" Tag="1" Text="Normal" />
+                                    <RadioMenuFlyoutItem Click="OnSpeedClick" GroupName="Speed" Tag="1.25" Text="1.25×" />
+                                    <RadioMenuFlyoutItem Click="OnSpeedClick" GroupName="Speed" Tag="1.5" Text="1.5×" />
+                                    <RadioMenuFlyoutItem Click="OnSpeedClick" GroupName="Speed" Tag="2" Text="2×" />
+                                </MenuFlyoutSubItem>
+                                <MenuFlyoutItem Click="OnShowInFolderClick" Text="Show in folder">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE838;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <Button
+                        x:Name="MiniPlayerButton"
+                        Grid.Column="6"
+                        AutomationProperties.AutomationId="MiniPlayerButton"
+                        AutomationProperties.Name="Mini player"
+                        Click="OnMiniPlayerClick"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Mini player (P)">
+                        <FontIcon
+                            x:Name="MiniPlayerGlyph"
+                            Glyph="&#xE8A7;"
+                            Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+
+                    <Button
+                        x:Name="FullscreenButton"
+                        Grid.Column="7"
+                        AutomationProperties.AutomationId="FullscreenButton"
+                        AutomationProperties.Name="Full screen"
+                        Click="OnFullscreenClick"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Full screen (F)">
+                        <FontIcon
+                            x:Name="FullscreenGlyph"
+                            Glyph="&#xE740;"
+                            Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <!-- ===== Opening ===== -->
+        <StackPanel
+            x:Name="OpeningPanel"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="16"
+            Visibility="Collapsed">
+            <ProgressRing
+                x:Name="OpeningRing"
+                Width="32"
+                Height="32"
+                IsActive="False" />
+            <TextBlock
+                x:Name="OpeningText"
+                MaxWidth="480"
+                HorizontalTextAlignment="Center"
+                Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                Style="{StaticResource BodyTextStyle}"
+                TextTrimming="CharacterEllipsis"
+                TextWrapping="NoWrap" />
+        </StackPanel>
+
+        <!-- ===== Error and unsupported file ===== -->
+        <Grid
+            x:Name="ErrorPanel"
+            Background="{ThemeResource SurfaceBaseBrush}"
+            Visibility="Collapsed">
+            <StackPanel
+                x:Name="ErrorStack"
+                MaxWidth="460"
+                Margin="24,48,24,48"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+                <FontIcon
+                    x:Name="ErrorGlyph"
+                    Margin="0,0,0,20"
+                    HorizontalAlignment="Center"
+                    FontSize="{StaticResource IconStatus}"
+                    Foreground="{ThemeResource StatusCriticalBrush}"
+                    Glyph="&#xE783;"
+                    Style="{StaticResource IconGlyphStyle}" />
+                <TextBlock
+                    x:Name="ErrorTitle"
+                    AutomationProperties.HeadingLevel="Level1"
+                    AutomationProperties.LiveSetting="Assertive"
+                    HorizontalTextAlignment="Center"
+                    Style="{StaticResource SubtitleTextStyle}" />
+                <TextBlock
+                    x:Name="ErrorMessage"
+                    Margin="0,8,0,0"
+                    HorizontalTextAlignment="Center"
+                    Style="{StaticResource BodyTextStyle}" />
+                <TextBlock
+                    x:Name="ErrorDetail"
+                    Margin="0,16,0,0"
+                    HorizontalTextAlignment="Center"
+                    IsTextSelectionEnabled="True"
+                    Style="{StaticResource CaptionTextStyle}" />
+                <StackPanel
+                    x:Name="ErrorActions"
+                    Margin="0,28,0,0"
+                    HorizontalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Button
+                        x:Name="ErrorOpenButton"
+                        AutomationProperties.AutomationId="ErrorOpenButton"
+                        Click="OnErrorOpenClick"
+                        Content="Open another file"
+                        Style="{StaticResource ApertureAccentButtonStyle}" />
+                    <Button
+                        x:Name="ErrorRemoveButton"
+                        AutomationProperties.AutomationId="ErrorRemoveButton"
+                        Click="OnErrorRemoveClick"
+                        Content="Remove from history"
+                        Style="{StaticResource ApertureButtonStyle}"
+                        Visibility="Collapsed" />
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

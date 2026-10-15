@@ -56,9 +56,12 @@ internal sealed class CardGrid
             return;
         }
 
+        // UniformGridLayout fits floor(width / (item + spacing)) columns, counting a spacing for
+        // every column, and spreads what is left over the items. Match that, so the layout picks
+        // the same number of columns and each card fills its column to within a few pixels.
         var spacing = _layout.MinColumnSpacing;
-        var columns = Math.Max(1, Math.Floor((width + spacing) / (_minimum + spacing)));
-        var column = Math.Max(_minimum, Math.Floor((width - (spacing * (columns - 1))) / columns));
+        var columns = Math.Max(1, Math.Floor(width / (_minimum + spacing)));
+        var column = Math.Max(_minimum, Math.Floor((width / columns) - spacing));
         if (Math.Abs(column - _column) < 0.5)
         {
             return;

@@ -82,7 +82,7 @@ public static class YouTubePlayabilityRules
     {
         YouTubePlayability.NotFound => ("This video isn’t available", "It may have been removed, made private, or the link may be incomplete."),
         YouTubePlayability.Private => ("This video is private", "Only people its owner chose can watch it, and only on YouTube."),
-        YouTubePlayability.NotEmbeddable => ("This video only plays on YouTube", "Its owner doesn’t allow it to be played in other apps. You can watch it on YouTube instead."),
+        YouTubePlayability.NotEmbeddable => ("This video only plays on YouTube", "YouTube didn’t let it play in other apps, usually because its owner turned that off. You can watch it on YouTube instead."),
         YouTubePlayability.AgeRestricted => ("This video is age-restricted", "YouTube only plays age-restricted videos on its own site, after checking your age."),
         YouTubePlayability.RegionBlocked => ("Not available in your region", "Its owner or YouTube has limited where it can be watched."),
         YouTubePlayability.Upcoming => ("This stream hasn’t started", "It’s a scheduled live stream or premiere. Try again when it begins, or open it on YouTube for a reminder."),

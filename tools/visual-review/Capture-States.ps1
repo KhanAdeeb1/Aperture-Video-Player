@@ -931,8 +931,12 @@ Step 'YouTube' {
     Start-Sleep -Seconds 3
     Send-Keys $p '^,'
     Start-Sleep -Seconds 1
-    (Find-Element $p 'YouTubeAutoplayToggle').SetFocus()
+    $toggle = Find-Element $p 'YouTubeAutoplayToggle'
+    $scroll = $null
+    if ($toggle.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref] $scroll)) { $scroll.ScrollIntoView() }
+    $toggle.SetFocus()
     Start-Sleep -Seconds 1
+    if ($toggle.Current.IsOffscreen) { throw 'Settings did not scroll to the YouTube group' }
     Move-MouseAway
     Save-Shot $p '85-settings-youtube'
     Stop-Aperture $p

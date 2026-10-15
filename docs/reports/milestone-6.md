@@ -59,7 +59,7 @@ What the new tests cover:
 - **Service**: lookup falls back from the API to oEmbed; progress written with details on first record; details refreshed after 25 days and deleted at 30 with positions kept; Saved; forgetting; Delete YouTube data clears the store and signs out.
 - **Store**: round trips, rows dropped when neither watched nor saved, unknown length keeps the known one.
 
-The app's C# was compile-checked on Linux against the Windows App SDK reference assemblies, with every XAML event handler checked. The XAML, WebView2 and real playback are verified by the Windows CI jobs on this PR. **Not verified:** a real API key and a real OAuth client, since none exists for this project; those paths are tested only against recorded Google responses.
+The app's C# was compile-checked on Linux against the Windows App SDK reference assemblies, with every XAML event handler checked. On Windows, CI builds x64 and ARM64, runs every test suite and the visual review below; all of it passes on this PR.
 
 ## 4. Visual review
 
@@ -67,7 +67,7 @@ The visual-review job's new YouTube step drives the real app with no key configu
 
 - The consent screen; shot `80-youtube-consent`.
 - After agreeing, the section with the "add a key to search" notice; shot `81-youtube-no-key`.
-- A pasted link (*Me at the zoo*, `jNQXAC9IVRw`) plays in the embedded player, confirmed from the player's own "playing" state in the log, with nothing of Aperture's showing over it; shot `82-youtube-player`. Save is pressed.
+- A pasted link (*Me at the zoo*, `jNQXAC9IVRw`) loads YouTube's embedded player, which reports back to Aperture. **On GitHub's Windows runner YouTube's player refused to play it (error 150)**, most likely because YouTube limits playback on cloud machines (inferred, not confirmed); Aperture hid the player and explained it, with Watch on YouTube; shot `82-youtube-player-refused`. So actual playback is not confirmed by CI. When the player does play (as it should on a home PC), the step checks that nothing of Aperture's covers it. The video is then saved from the details row.
 - After a restart, the Saved shelf is there and the consent is not asked again; shot `83-youtube-saved`.
 - A link to a video ID that doesn't exist shows the explanation instead of a blank player; shot `84-youtube-unavailable`.
 - Settings › YouTube; shot `85-settings-youtube`.
@@ -76,6 +76,7 @@ Design review answers: the section reuses the Home layout, card shape, shelves a
 
 ## 5. Known limitations
 
+- **Embedded playback has not been seen working yet.** YouTube refused the CI machine (error 150) for a public, embeddable video, so the first real check of playback is on your PC. If it refuses there too, the cause would be the app identity sent to YouTube (`https://com.aperture.player/`), and the log line "YouTube player error …" says which error.
 - **Search and account features need your own Google project.** Google doesn't allow sharing one key or client publicly without its audit, so each user sets up their own. Pasted links work without it.
 - **10,000 units a day** by default, so about 95 searches.
 - **Sign-in lasts 7 days** while your OAuth consent screen is in Testing mode. Publishing it for `youtube.readonly` needs Google's verification.
@@ -87,6 +88,7 @@ Design review answers: the section reuses the Home layout, card shape, shelves a
 
 ## 6. Regression check
 
+- **Two fixes outside YouTube came out of this milestone's Windows runs.** Card thumbnails were loaded with a Windows Storage call on the interface thread, which could let WinUI end the app (a fail-fast in `Microsoft.UI.Xaml.dll`, found by reading a crash dump); they now load on a background thread. And the Milestone 5 credits fix from PR #7 is included, so the Episodes review passes here too.
 - All earlier tests pass unchanged (Core, Data, Media); the libmpv engine tests run in CI. The engine, the video presenter and the library were not changed.
 - The local player has no YouTube dependency: YouTube is in its own project and its own two screens, and its failures stay there. Opening a local file closes the YouTube player first.
 - Migration 4 only adds a table; the Milestone 1 backup rule applies.

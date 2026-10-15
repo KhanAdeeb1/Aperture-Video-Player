@@ -123,6 +123,8 @@ public sealed partial class YouTubePlayerView : UserControl
             ShowDetails();
         }
 
+        // Saving a video that doesn't exist would only leave a dead card behind.
+        SaveButton.Visibility = playability == YouTubePlayability.NotFound ? Visibility.Collapsed : Visibility.Visible;
         if (playability != YouTubePlayability.Playable)
         {
             AppLog.Info($"YouTube video not played here: {playability}.");

@@ -43,7 +43,7 @@ Date: 2026-10-15
 
 ## 2. Files changed
 
-90 files changed relative to `claude/milestone-0-audit-84kzf1` (which contains Milestone 2).
+91 files changed relative to `claude/milestone-0-audit-84kzf1` (which contains Milestone 2).
 
 | Area | Files | Responsibility |
 |---|---|---|
@@ -84,7 +84,7 @@ Screenshots are on the `ci/visual-review` branch (numbers below are file names).
 - A file opened paused ("Ask each time") showed 0:00 on the timeline until played. The timeline now updates when paused.
 - Leaving full screen or the mini-player could crash (an unhandled error reading the display list). Fixed and covered by the run.
 - Cards with no picture (podcasts, files Windows can't preview) collapsed to the height of their title instead of a 16:9 tile.
-- At some window widths, card grids widened cards without making rows taller, cutting off the detail line (65). Rows now grow with the cards.
+- At some window widths, card grids widened cards without making rows taller, cutting off the detail line (65). Cards now take their height from their width as they are measured, and grids give each card the exact column width, so rows fit at every width (checked at 1024, 1280 and 1920).
 - While a scan was finishing, the library briefly said "Last scan didn't finish". It now says nothing until the refreshed state is shown.
 - Esc in Edit details closed the library behind the dialog and left the dialog open on Home. Window shortcuts now stand aside while a dialog is open.
 - The library grid was invisible to screen readers and UI Automation (the repeater has no accessibility peer). It is now exposed as "Library items".

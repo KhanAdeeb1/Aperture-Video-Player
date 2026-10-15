@@ -33,8 +33,6 @@ public static class Win {
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hwnd, int x, int y, int w, int h, bool repaint);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int cmd);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
-    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out RECT rect, int size);
 }
 "@
@@ -80,6 +78,17 @@ function Find-Element($p, [string] $id, [int] $seconds = 10) {
         Start-Sleep -Milliseconds 300
     }
     throw "UI element '$id' not found"
+}
+
+function Find-ByName($p, [string] $name, [int] $seconds = 5) {
+    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $name)
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        $element = (Get-Root $p).FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($element) { return $element }
+        Start-Sleep -Milliseconds 300
+    }
+    return $null
 }
 
 function Invoke-Element($element) { $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
@@ -494,25 +503,18 @@ Step 'Library' {
     [System.Windows.Forms.SendKeys]::SendWait((Media 'Library'))
     [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
     Start-Sleep -Seconds 2
-    # Typing a path and Enter opens that folder in the picker; its commit button then picks it.
-    # ([NullString]::Value: PowerShell would pass $null to a string parameter as "".)
-    $pickerHandle = [Win]::FindWindow('#32770', [NullString]::Value)
-    if ($pickerHandle -ne [IntPtr]::Zero) {
-        $picker = [System.Windows.Automation.AutomationElement]::FromHandle($pickerHandle)
-        # The commit button carries the text Aperture gives the picker. If UI Automation
-        # cannot see it, send the dialog the same command the button sends (IDOK).
-        $select = $picker.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Add to library')))
-        if ($select) {
-            Note "Folder picker commit button: $($select.Current.ControlType.ProgrammaticName)"
-            try { Invoke-Element $select } catch { [Win]::PostMessage($pickerHandle, 0x0111, [IntPtr]1, [IntPtr]::Zero) | Out-Null }
-        } else {
-            Note 'Folder picker commit button not visible to UI Automation; sending IDOK'
-            [Win]::PostMessage($pickerHandle, 0x0111, [IntPtr]1, [IntPtr]::Zero) | Out-Null  # WM_COMMAND, IDOK
-        }
+    # Typing a path and Enter opens that folder in the picker, leaving focus in its Folder
+    # box; Tab moves to the commit button ("Add to library") and Enter presses it.
+    if (-not (Find-ByName $p 'Add and scan' 2)) {
+        [System.Windows.Forms.SendKeys]::SendWait('{TAB}')
+        Start-Sleep -Milliseconds 400
+        [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
         Start-Sleep -Seconds 2
     }
-    if ([Win]::FindWindow('#32770', [NullString]::Value) -ne [IntPtr]::Zero) { throw 'the folder picker is still open' }
+    if (-not (Find-ByName $p 'Add and scan' 5)) {
+        Save-Shot $p '61-folder-picker-stuck' -FullScreen
+        throw 'the folder picker did not hand the folder to Aperture'
+    }
     Save-Shot $p '61-add-folder-kind'
     Send-Keys $p '{ENTER}'
     Start-Sleep -Milliseconds 800

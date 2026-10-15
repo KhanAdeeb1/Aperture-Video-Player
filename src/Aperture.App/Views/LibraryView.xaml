@@ -160,7 +160,7 @@
                 ElementPrepared="OnCardPrepared">
                 <ItemsRepeater.Layout>
                     <UniformGridLayout
-                        ItemsStretch="Fill"
+                        ItemsStretch="Uniform"
                         MinColumnSpacing="16"
                         MinItemWidth="{StaticResource ArtworkSmallWidth}"
                         MinRowSpacing="24" />

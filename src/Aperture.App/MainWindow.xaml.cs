@@ -360,6 +360,10 @@ public sealed partial class MainWindow : Window
         ShowScreen(Screen.Settings);
     }
 
+    private bool IsDialogOpen() =>
+        Content.XamlRoot is { } root
+        && Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(root).Any(popup => popup.Child is ContentDialog);
+
     private async Task GoBackAsync()
     {
         switch (_screen)
@@ -832,6 +836,12 @@ public sealed partial class MainWindow : Window
 
     private async void OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // A dialog owns the keyboard: Esc must close it, not navigate the screen behind it.
+        if (IsDialogOpen())
+        {
+            return;
+        }
+
         var control = IsDown(VirtualKey.Control);
         var shift = IsDown(VirtualKey.Shift);
         var alt = IsDown(VirtualKey.Menu);

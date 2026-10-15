@@ -572,8 +572,13 @@ Step 'Library' {
     Start-Sleep -Seconds 1
     Find-Element $p 'TitleBox' | Out-Null
     Save-Shot $p '67-edit-details'
+    # Esc closes the dialog and leaves the library where it was.
     Send-Keys $p '{ESC}'
-    Start-Sleep -Milliseconds 600
+    Start-Sleep -Milliseconds 800
+    $stillOpen = $null
+    try { $stillOpen = Find-Element $p 'TitleBox' 1 } catch { }
+    if ($stillOpen) { throw 'Esc did not close Edit details' }
+    Find-Element $p 'LibraryItems' 2 | Out-Null
 
     Send-Keys $p '%{LEFT}'
     Start-Sleep -Seconds 2

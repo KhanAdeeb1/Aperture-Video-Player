@@ -20,19 +20,30 @@ internal static class CardGrid
         var minimum = layout.MinItemWidth;
         repeater.SizeChanged += (_, e) =>
         {
-            var spacing = layout.MinColumnSpacing;
+            // Only width matters; new rows change the height, and reacting to that would loop.
             var width = e.NewSize.Width;
-            if (width <= 0)
+            if (width <= 0 || Math.Abs(width - e.PreviousSize.Width) < 0.5)
             {
                 return;
             }
 
-            var columns = Math.Max(1, Math.Floor((width + spacing) / (minimum + spacing)));
-            var column = Math.Max(minimum, Math.Floor((width - (spacing * (columns - 1))) / columns));
-            if (Math.Abs(layout.MinItemWidth - column) > 0.5)
+            // Change the layout after this layout pass rather than during it.
+            repeater.DispatcherQueue.TryEnqueue(() =>
             {
-                layout.MinItemWidth = column;
-            }
+                var spacing = layout.MinColumnSpacing;
+                var current = repeater.ActualWidth;
+                if (current <= 0)
+                {
+                    return;
+                }
+
+                var columns = Math.Max(1, Math.Floor((current + spacing) / (minimum + spacing)));
+                var column = Math.Max(minimum, Math.Floor((current - (spacing * (columns - 1))) / columns));
+                if (Math.Abs(layout.MinItemWidth - column) > 0.5)
+                {
+                    layout.MinItemWidth = column;
+                }
+            });
         };
     }
 }

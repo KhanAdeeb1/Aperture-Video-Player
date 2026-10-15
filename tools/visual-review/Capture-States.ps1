@@ -841,16 +841,17 @@ function Wait-Log([string] $text, [int] $seconds) {
 # Automation and its text checked before Enter, so a keystroke lost to another window shows up
 # as a clear failure here rather than as a player that never answers.
 function Open-YouTubeLink($p, [string] $url) {
+    # The AutoSuggestBox itself takes no focus; its text field does.
     $box = Find-Element $p 'SearchBox'
+    $field = $box.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+    if (-not $field) { throw 'the search box has no text field' }
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         [Win]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
-        $box.SetFocus()
+        $field.SetFocus()
         Start-Sleep -Milliseconds 400
         [System.Windows.Forms.SendKeys]::SendWait('^a{BACKSPACE}' + $url)
         Start-Sleep -Milliseconds 400
-        $field = $box.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
-        if (-not $field) { $field = $box }
         $value = $null
         if ($field.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref] $value) -and $value.Current.Value -eq $url) {
             [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')

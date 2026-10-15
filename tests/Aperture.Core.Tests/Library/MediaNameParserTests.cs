@@ -16,6 +16,7 @@ public class MediaNameParserTests
     [InlineData(@"Glass_Garden_1998_DVDRip.avi", "Glass Garden", 1998)]
     [InlineData(@"1917 (2019).mkv", "1917", 2019)]
     [InlineData(@"Night Ferry (2021)\movie.mkv", "Night Ferry", 2021)]
+    [InlineData(@"Film.2010.mkv", "Film", 2010)]
     public void Films_with_years(string name, string title, int year)
     {
         var parsed = Parse(name);

@@ -305,7 +305,7 @@ public static partial class MediaNameParser
     {
         var text = LeadingGroupPattern().Replace(name, string.Empty);
         var dots = text.Count(c => c == '.');
-        if (text.Contains('_', StringComparison.Ordinal) || (dots >= 2 && !text.Contains(' ', StringComparison.Ordinal)) || dots >= 3)
+        if (text.Contains('_', StringComparison.Ordinal) || (dots >= 1 && !text.Contains(' ', StringComparison.Ordinal)) || dots >= 3)
         {
             text = DotOrUnderscorePattern().Replace(text, " ");
         }

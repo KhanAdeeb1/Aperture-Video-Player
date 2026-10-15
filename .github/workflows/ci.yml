@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   core-tests:
-    name: Core and data tests (${{ matrix.os }})
+    name: Core, data and library tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -25,6 +25,7 @@ jobs:
         run: |
           dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj -c Release
           dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj -c Release
+          dotnet test tests/Aperture.Media.Tests/Aperture.Media.Tests.csproj -c Release
 
   test-media:
     name: Generate test media

@@ -133,4 +133,5 @@ public sealed record ScanProgress(long FolderId, ScanPhase Phase, int Done, int?
 /// <param name="Updated">Items whose file changed.</param>
 /// <param name="Missing">Items whose file has gone (complete scans only).</param>
 /// <param name="Problems">Files or folders that could not be read.</param>
-public sealed record ScanSummary(bool Completed, int Added, int Updated, int Missing, int Problems);
+/// <param name="FolderUnavailable">True when the folder itself could not be reached (a drive unplugged); nothing was marked missing.</param>
+public sealed record ScanSummary(bool Completed, int Added, int Updated, int Missing, int Problems, bool FolderUnavailable = false);

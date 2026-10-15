@@ -21,7 +21,6 @@ public sealed partial class LibraryView : UserControl
     private string _query = string.Empty;
     private bool _loaded;
     private bool _showing;
-    private bool _building;
 
     public LibraryView()
     {
@@ -33,7 +32,6 @@ public sealed partial class LibraryView : UserControl
             Kinds.Items.Add(new SelectorBarItem { Text = MediaCategories.PluralLabel(category), Tag = category });
         }
 
-        _building = true;
         foreach (var (label, filter) in new (string, WatchFilter)[] { ("All", WatchFilter.All), ("Unwatched", WatchFilter.Unwatched), ("In progress", WatchFilter.InProgress), ("Watched", WatchFilter.Watched) })
         {
             FilterBox.Items.Add(new ComboBoxItem { Content = label, Tag = filter });
@@ -46,7 +44,6 @@ public sealed partial class LibraryView : UserControl
 
         FilterBox.SelectedIndex = 0;
         SortBox.SelectedIndex = 0;
-        _building = false;
 
         // Scans save in batches; redraw at most once a second while they run.
         _refreshTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
@@ -267,21 +264,10 @@ public sealed partial class LibraryView : UserControl
         }
     }
 
-    private void OnKindChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
-    {
-        if (!_building)
-        {
-            Render();
-        }
-    }
+    // Render shows the loading state until the first load, so changes made while building are harmless.
+    private void OnKindChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args) => Render();
 
-    private void OnChoiceChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_building)
-        {
-            Render();
-        }
-    }
+    private void OnChoiceChanged(object sender, SelectionChangedEventArgs e) => Render();
 
     private void OnScanClick(object sender, RoutedEventArgs e) => _services?.Library.RequestScan();
 

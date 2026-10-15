@@ -2,7 +2,9 @@
 
 Every dependency must appear here with its license and the reason it is needed before it is added to `Directory.Packages.props` or `third_party/`. "Checked" means the fact was looked up on the date shown; it is not legal advice.
 
-## In use (Milestone 2)
+## In use (Milestones 2 to 4)
+
+Milestones 3 and 4 added no packages and no native libraries. Library scanning reuses libmpv headless instead of adding FFprobe, the TMDB key is stored with Windows Credential Manager through four `advapi32` functions called directly (`CredReadW`, `CredWriteW`, `CredDeleteW`, `CredFree`), and TMDB is reached with .NET's own `HttpClient`.
 
 | Dependency | Version | License | Why | Notes |
 |---|---|---|---|---|
@@ -22,9 +24,15 @@ Every dependency must appear here with its license and the reason it is needed b
 | **libmpv** (`libmpv-2.dll`) | GPLv2+ by default; LGPLv2.1+ only when built without GPL-only files (`-Dgpl=false`). Verified in mpv's `Copyright` file on master, 2026-10-15 | Playback engine | M2 (in use) | The mpv project does not ship Windows binaries. Third-party builds (for example the `mpv-winbuild-cmake` builds) must be checked for which license they were built under and which FFmpeg configuration they include. **Decision needed from adi before release:** either accept GPL obligations for the whole app (Aperture's source would have to be distributed under GPL-compatible terms) or produce/obtain an LGPL build and dynamically link it, shipping license texts and offering corresponding source. Development can proceed with either; release cannot. |
 | FFmpeg (inside libmpv) | LGPL-2.1+ or GPL depending on build flags | Demuxing and decoding | M2 (in use, inside the pinned build) | Same as above. Also: shipping H.264/HEVC/AAC decoders can carry patent-licensing implications in some jurisdictions; needs a decision before public distribution |
 | libass, and other libmpv deps (HarfBuzz, FreeType, FriBidi, libplacebo…) | ISC / MIT / FreeType / LGPL (per library; to be enumerated from the chosen build) | Subtitles, shaping, rendering | M2 (inside the pinned build) | Enumerate from the exact build into `THIRD-PARTY-NOTICES.md` |
-| FFprobe | Same as FFmpeg build | Library scanning metadata | M6 | May be unnecessary if libmpv can serve the same need |
+| FFprobe | Same as FFmpeg build | Library scanning metadata | Not needed | Milestone 4 reads length, picture size and bitrate with a headless libmpv instance instead |
 | CommunityToolkit.Mvvm | MIT | Source-generated observable properties/commands, removes MVVM boilerplate | M2 | Only if ViewModels grow enough to justify it |
 | Microsoft.Extensions.DependencyInjection / Logging | MIT | Composition root and structured logging abstractions | M1–M2 | Logging sink: a small rolling file logger of our own vs. Serilog (Apache-2.0), decided in M4 |
+
+## Online services (optional, off by default)
+
+| Service | Terms | Why | Notes |
+|---|---|---|---|
+| [TMDB API](https://developer.themoviedb.org/docs) v3 | TMDB API terms of use; non-commercial use is free with attribution | Optional titles, years, episode names and posters for films and shows in the library | Used only when the user turns on "Look up details online" and pastes their own API key (v3 key or v4 read access token). Aperture ships no key. The key is kept in Windows Credential Manager, never in the database, settings or logs. Only the cleaned-up title, year, season and episode are sent, never file paths. Settings shows the required notice: "This product uses the TMDB API but is not endorsed or certified by TMDB." Commercial distribution would need TMDB's commercial terms |
 
 ## Build and CI tools (not shipped)
 

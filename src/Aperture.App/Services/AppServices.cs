@@ -83,7 +83,7 @@ internal sealed record AppServices(
     }
 
     /// <summary>The library's file inspector; without libmpv the library still works from file names.</summary>
-    private static IMediaProbe? CreateProbe()
+    private static MpvMediaProbe? CreateProbe()
     {
         try
         {

@@ -18,6 +18,7 @@
 # Platform-neutral tests
 dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj
 dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj
+dotnet test tests/Aperture.Media.Tests/Aperture.Media.Tests.csproj
 
 # Engine tests against real files (see "Engine tests" below)
 powershell -File tools/Get-Libmpv.ps1 -RuntimeIdentifier win-x64
@@ -47,6 +48,7 @@ Only the platform-neutral projects build there:
 ```bash
 dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj
 dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj
+dotnet test tests/Aperture.Media.Tests/Aperture.Media.Tests.csproj
 dotnet test tests/Aperture.Playback.Mpv.Tests/Aperture.Playback.Mpv.Tests.csproj   # needs libmpv2
 ```
 
@@ -68,7 +70,7 @@ Without `APERTURE_TEST_MEDIA`, or without libmpv, the file tests are reported as
 
 `.github/workflows/ci.yml` runs on every push and pull request:
 
-- **Core and data tests** on `ubuntu-latest` and `windows-latest`.
+- **Core, data and library tests** on `ubuntu-latest` and `windows-latest`.
 - **Test media**: an Ubuntu job generates the visual-review clips and the engine test files with FFmpeg.
 - **libmpv engine tests** on Ubuntu (distribution `libmpv2`) and Windows (the pinned build). The measured results table is written to the job summary.
 - **Windows app build** for `x64` and `ARM64`, checking that `libmpv-2.dll` and `av_libglesv2.dll` are next to the app, with a launch smoke test on x64.

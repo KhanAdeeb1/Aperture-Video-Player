@@ -531,6 +531,8 @@ public sealed partial class PlayerView
         {
             SetAdjustVisible(false);
             CastPanel.Visibility = Visibility.Collapsed;
+            BookmarksPanel.Visibility = Visibility.Collapsed;
+            BookmarksMenuItem.IsChecked = false;
             if (InfoPanel.Visibility == Visibility.Visible)
             {
                 SetInfoVisible(Root.ActualWidth >= 800);

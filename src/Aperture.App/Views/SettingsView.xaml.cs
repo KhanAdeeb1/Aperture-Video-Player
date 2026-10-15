@@ -156,6 +156,9 @@ public sealed partial class SettingsView : UserControl
         Select(ResumeBox, settings.Resume);
         Select(HideDelayBox, settings.ControlsHideDelaySeconds);
         PitchToggle.IsOn = settings.PreservePitch;
+        SeekPreviewsToggle.IsOn = settings.SeekPreviews;
+        ClearDialogueToggle.IsOn = settings.SoundDefaults.ClearDialogue;
+        EvenVolumeToggle.IsOn = settings.SoundDefaults.EvenVolume;
         Select(SubtitleSizeBox, settings.SubtitleStyle.Size);
         Select(SubtitleColorBox, settings.SubtitleStyle.Color);
         Select(SubtitleBackgroundBox, settings.SubtitleStyle.Background);
@@ -192,6 +195,8 @@ public sealed partial class SettingsView : UserControl
             Resume = Selected(ResumeBox, current.Resume),
             ControlsHideDelaySeconds = Selected(HideDelayBox, current.ControlsHideDelaySeconds),
             PreservePitch = PitchToggle.IsOn,
+            SeekPreviews = SeekPreviewsToggle.IsOn,
+            Sound = new SoundOptions(ClearDialogueToggle.IsOn, EvenVolumeToggle.IsOn),
             Subtitles = new SubtitleStyle(
                 Selected(SubtitleSizeBox, current.SubtitleStyle.Size),
                 Selected(SubtitleColorBox, current.SubtitleStyle.Color),
@@ -573,5 +578,11 @@ public sealed partial class SettingsView : UserControl
         {
             ShellActions.OpenFolder(_services.DataLocation.Root);
         }
+    }
+
+    private void OnCopyDiagnosticClick(object sender, RoutedEventArgs e)
+    {
+        DiagnosticClipboard.Copy(problem: null);
+        CopyDiagnosticButton.Content = "Copied";
     }
 }

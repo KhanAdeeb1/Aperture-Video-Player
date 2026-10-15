@@ -93,6 +93,27 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Show a picture when pointing at the timeline" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Made in the background from the video itself and kept only in memory while it plays. Turn off on slow PCs or to save battery." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="SeekPreviewsToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="SeekPreviewsToggle"
+                        AutomationProperties.Name="Show a picture when pointing at the timeline"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
                         <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Keyboard shortcuts" />
                         <TextBlock
                             x:Name="ShortcutsCaption"
@@ -107,6 +128,56 @@
                         Click="OnShortcutsClick"
                         Content="Customize…"
                         Style="{StaticResource ApertureButtonStyle}" />
+                </Grid>
+            </StackPanel>
+
+            <!-- Sound -->
+            <TextBlock
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource SettingGroupHeaderTextStyle}"
+                Text="Sound" />
+            <StackPanel Spacing="2">
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Clearer dialogue" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Lifts voices above music and effects. Uses ordinary sound filters on this PC, not AI, and nothing leaves it. A video or show can have its own choice, from the player’s More menu." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="ClearDialogueToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="ClearDialogueToggle"
+                        AutomationProperties.Name="Clearer dialogue"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Even volume" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Evens out loud and quiet scenes, so you don’t have to keep changing the volume. Also processed on this PC only." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="EvenVolumeToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="EvenVolumeToggle"
+                        AutomationProperties.Name="Even volume"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnSettingChanged" />
                 </Grid>
             </StackPanel>
 
@@ -1039,6 +1110,28 @@
                         AutomationProperties.AutomationId="OpenDataFolderButton"
                         Click="OnOpenDataFolder"
                         Content="Open folder"
+                        Style="{StaticResource ApertureButtonStyle}" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Diagnostic report" />
+                        <TextBlock
+                            x:Name="DiagnosticCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Copies versions and the end of Aperture’s log for a bug report, with file and folder names removed. Nothing is sent anywhere; you choose where to paste it."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button
+                        x:Name="CopyDiagnosticButton"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="CopyDiagnosticButton"
+                        Click="OnCopyDiagnosticClick"
+                        Content="Copy report"
                         Style="{StaticResource ApertureButtonStyle}" />
                 </Grid>
             </StackPanel>

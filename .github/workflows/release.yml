@@ -92,7 +92,7 @@ jobs:
       - name: Open and close, then play continuously
         shell: powershell
         run: >
-          tools/release/Test-Soak.ps1
+          tools/packaging/Test-Soak.ps1
           -Exe "$env:RUNNER_TEMP/app/Aperture.exe"
           -Video "$env:RUNNER_TEMP/Soak 1080p60.mkv"
           -OutDir "$env:RUNNER_TEMP/soak"

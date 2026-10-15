@@ -224,6 +224,10 @@ Step 'Playback states' {
     $p = Start-Aperture (Media 'Harbour Lights.mp4')
     Save-Shot $p '05-opening'
     Start-Sleep -Seconds 3
+    # The pointer may already be at the centre from the previous step; move it so the
+    # window sees real pointer movement.
+    Move-MouseToCenter $p 60
+    Start-Sleep -Milliseconds 150
     Move-MouseToCenter $p
     Start-Sleep -Milliseconds 600
     Save-Shot $p '03-playback-controls-visible'

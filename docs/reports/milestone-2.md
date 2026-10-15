@@ -89,6 +89,8 @@ These are synthetic files. They cover the common containers and codecs, but they
 | Picture reaches the screen upright, GPU path | CI visual review, 1920×1080, Basic Render Driver | Pixel check passes windowed, after a resize to 1600×900, and in full screen (amber top, blue bottom as encoded) |
 | Same, software path | CI visual review | Pixel check passes |
 | Every Milestone 1 state, now over libmpv | CI visual review | All steps completed; 7 clips confirmed playing (position advancing) |
+| Tracks menu, subtitle and audio switching, info panel, picture shape, speed | CI visual review on Night Market.mkv (2 audio, 2 subtitle tracks) | All steps completed; the info panel's text is recorded in the notes |
+| Interface responsiveness during playback | CI app log | No stalls during playback after the fix (before it: 1 to 8 s stalls) |
 | FFV1 file (unplayable in M1) | CI visual review | Plays in the app |
 
 What the CI runs found and I fixed:
@@ -108,7 +110,10 @@ I reviewed the CI screenshots myself this time (CI now also commits downscaled c
 - Subtitles render with the intended size, outline and bottom margin, and move up while the controls are shown so they are never covered.
 - Error screens are consistent with M1. The "nothing here to play" screen repeated its message in the detail line; it now gives the cause instead.
 
-VISUAL_REVIEW_PLACEHOLDER
+- The new controls render as designed over video: the "Audio and subtitles" menu with its Subtitles and Audio submenus and "Add subtitle file…", the More menu's Playback speed, Picture shape and Playback info entries, the Playback info panel, and the short confirmations ("Subtitles: French", "Picture: Fill window", "Speed 1.25×") centred near the top.
+- Three problems the screenshots showed, all fixed: the GPU picture and its subtitles were upside down; menus and toasts appeared seconds late on the GPU-less runner; and the info panel's codec line repeated FFmpeg's long name ("H.264 (H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10)"), which now reads "H.264".
+- The CI runner has no sound device, so its screenshots show "No sound device is available, so this video is playing without sound." when a file opens, and the tracks menu reads "Audio: Off". On a PC with speakers or headphones neither appears.
+- Still to judge on a real screen: the info panel is dense at 340 px wide, and its colour line ("bt.601 · bt.709 · bt.1886") is accurate but technical. I kept it because the panel is for diagnosis.
 
 ## 5. Known limitations
 

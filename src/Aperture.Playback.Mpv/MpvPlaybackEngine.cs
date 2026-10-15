@@ -261,7 +261,14 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
         return engine;
     }
 
-    public async Task OpenAsync(string path, TimeSpan startAt, CancellationToken cancellationToken = default)
+    public Task OpenAsync(string path, TimeSpan startAt, CancellationToken cancellationToken = default) =>
+        OpenAsync(path, startAt, startPaused: false, cancellationToken);
+
+    /// <summary>
+    /// Opens a file, optionally showing its first frame paused (used when the player asks
+    /// whether to resume, so nothing plays before the user answers).
+    /// </summary>
+    public async Task OpenAsync(string path, TimeSpan startAt, bool startPaused, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -303,7 +310,7 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
         // "start" is a global option: it applies to the next file loaded, so it is set
         // (or cleared) before every load.
         _client.SetProperty("start", startAt > TimeSpan.Zero ? startAt.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture) : "none");
-        _client.SetProperty("pause", false);
+        _client.SetProperty("pause", startPaused);
         var result = await _client.CommandAsync("loadfile", path, "replace").ConfigureAwait(true);
         if (result < 0)
         {

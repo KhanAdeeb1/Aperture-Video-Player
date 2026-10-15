@@ -38,6 +38,8 @@ public class LibraryCoordinatorTests
         var group = Assert.Single(snapshot.Groups);
         Assert.Single(group.Others);
         Assert.Equal(1, snapshot.Count(MediaCategory.Movie));
+        Assert.Same(group, snapshot.GroupOf(group.Others[0].Path.ToUpperInvariant()));
+        Assert.Null(snapshot.GroupOf(Path.Combine(library.Media, "elsewhere.mkv")));
     }
 
     [Fact]

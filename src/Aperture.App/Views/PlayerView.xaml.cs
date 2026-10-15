@@ -1,6 +1,7 @@
 using Aperture.App.Interop;
 using Aperture.App.Services;
 using Aperture.App.Video;
+using Aperture.Core.Input;
 using Aperture.Core.Library;
 using Aperture.Core.Media;
 using Aperture.Core.Playback;
@@ -12,7 +13,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
-using Windows.System;
+using Microsoft.UI.Xaml.Media;
 using DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue;
 using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 
@@ -20,58 +21,60 @@ namespace Aperture.App.Views;
 
 /// <summary>
 /// The playback screen: the libmpv video surface, auto-hiding controls, the audio and
-/// subtitle menu, playback info, and the opening and error states.
+/// subtitle menu, sync and subtitle look, playback info, the shortcut list, and the
+/// opening, resume and error states. Keys arrive as commands from the user's shortcut map.
 /// </summary>
 public sealed partial class PlayerView : UserControl
 {
-    private const string PlayGlyph = "\uE768";
-    private const string PauseGlyph = "\uE769";
-    private const string SpeakerGlyph = "\uE767";
-    private const string MuteGlyph = "\uE74F";
-    private const string EnterFullscreenGlyph = "\uE740";
-    private const string ExitFullscreenGlyph = "\uE73F";
-    private const string EnterMiniGlyph = "\uE8A7";
-    private const string ExitMiniGlyph = "\uE740";
-    private const string WarningGlyph = "\uE7BA";
-    private const string ErrorGlyphCode = "\uE783";
-    private const string VideoGlyph = "\uE714";
+    private const string PlayGlyph = "";
+    private const string PauseGlyph = "";
+    private const string SpeakerGlyph = "";
+    private const string MuteGlyph = "";
+    private const string EnterFullscreenGlyph = "";
+    private const string ExitFullscreenGlyph = "";
+    private const string EnterMiniGlyph = "";
+    private const string ExitMiniGlyph = "";
+    private const string WarningGlyph = "";
+    private const string ErrorGlyphCode = "";
+    private const string VideoGlyph = "";
 
     private static readonly TimeSpan SmallStep = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan LargeStep = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan JumpStep = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan LongStep = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ResumeNoticeDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan DoubleClickWindow = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan ToastDuration = TimeSpan.FromSeconds(1.8);
     private static readonly TimeSpan NoticeDuration = TimeSpan.FromSeconds(6);
-
-    // Keys without a VirtualKey name (US layout positions; Windows reports the physical key).
-    private const VirtualKey OpenBracketKey = (VirtualKey)219;
-    private const VirtualKey BackslashKey = (VirtualKey)220;
-    private const VirtualKey CloseBracketKey = (VirtualKey)221;
-    private const VirtualKey MediaStopKey = (VirtualKey)178;
-    private const VirtualKey MediaPlayPauseKey = (VirtualKey)179;
+    private const double VolumeStep = 5;
 
     private readonly DispatcherQueueTimer _ticker;
     private readonly DispatcherQueueTimer _resumeNoticeTimer;
     private readonly DispatcherQueueTimer _singleTapTimer;
     private readonly DispatcherQueueTimer _toastTimer;
     private readonly DispatcherQueueTimer _infoTimer;
+    private readonly DispatcherQueueTimer _volumeSaveTimer;
     private readonly CursorVisibility _cursor = new();
     private readonly IdleOverlay _overlay;
 
     private MpvPlaybackEngine? _engine;
     private SwapChainPanelBridge? _bridge;
     private string? _engineProblem;
-    private IPlaybackHistory? _history;
+    private AppServices? _services;
     private ProgressRecorder? _recorder;
-    private Func<AppSettings> _settings = () => AppSettings.Default;
+    private Func<ShortcutMap> _shortcuts = () => ShortcutMap.Default;
     private string? _path;
+    private PlaybackPreferences? _pendingChoices;
+    private bool _asking;
     private bool _updatingTimeline;
+    private bool _updatingLook;
     private bool _scrubbing;
     private bool _pointerOnControls;
     private bool _keyboardInControls;
+    private bool _focusInPanel;
     private bool _menuOpen;
     private bool _pointerInside;
     private bool _isMini;
+    private bool _isFullscreen;
 
     public PlayerView()
     {
@@ -84,7 +87,7 @@ public sealed partial class PlayerView : UserControl
 
         _resumeNoticeTimer = dispatcher.CreateTimer();
         _resumeNoticeTimer.IsRepeating = false;
-        _resumeNoticeTimer.Tick += (_, _) => ResumeNotice.Visibility = Visibility.Collapsed;
+        _resumeNoticeTimer.Tick += (_, _) => HideResumeNotice();
 
         _singleTapTimer = dispatcher.CreateTimer();
         _singleTapTimer.IsRepeating = false;
@@ -99,8 +102,15 @@ public sealed partial class PlayerView : UserControl
         _infoTimer.Interval = TimeSpan.FromSeconds(1);
         _infoTimer.Tick += (_, _) => RefreshInfo();
 
+        // Volume is remembered between sessions; saved once the user stops changing it.
+        _volumeSaveTimer = dispatcher.CreateTimer();
+        _volumeSaveTimer.IsRepeating = false;
+        _volumeSaveTimer.Interval = TimeSpan.FromSeconds(1);
+        _volumeSaveTimer.Tick += async (_, _) => await SaveVolumeAsync();
+
         BuildSpeedMenu();
         BuildAspectMenu();
+        BuildLookChoices();
 
         _overlay = new IdleOverlay(dispatcher) { IsPinned = IsOverlayPinned };
         _overlay.VisibilityChanged += OnOverlayVisibilityChanged;
@@ -122,7 +132,7 @@ public sealed partial class PlayerView : UserControl
     /// <summary>The user removed the missing file from history; the window should go home.</summary>
     public event EventHandler? DismissRequested;
 
-    /// <summary>The user asked to stop playback (S or the media Stop key); the window should go home.</summary>
+    /// <summary>The user asked to stop playback; the window should go home.</summary>
     public event EventHandler? StopRequested;
 
     /// <summary>The user asked to load a subtitle file; the window shows the picker.</summary>
@@ -131,17 +141,27 @@ public sealed partial class PlayerView : UserControl
     /// <summary>Raised when the controls fade in or out, so the window can fade its title bar too.</summary>
     public event EventHandler<bool>? OverlayVisibilityChanged;
 
+    /// <summary>The user changed the subtitle look from the player; the window saves it.</summary>
+    public event EventHandler<SubtitleStyle>? SubtitleStyleChanged;
+
     /// <summary>Title of the open file, for the title bar.</summary>
     public string Title { get; private set; } = string.Empty;
 
     /// <summary>True while the overlay (and the title bar with it) should be visible.</summary>
     public bool IsOverlayVisible => _overlay.IsVisible;
 
-    internal void Initialize(MpvPlaybackEngine? engine, VideoPresenter? presenter, string? engineProblem, IPlaybackHistory history, Func<AppSettings> settings)
+    /// <summary>True while a side panel or the shortcut list is open (Esc closes it first).</summary>
+    public bool HasOpenPanel =>
+        AdjustPanel.Visibility == Visibility.Visible || ShortcutsPanel.Visibility == Visibility.Visible || InfoPanel.Visibility == Visibility.Visible;
+
+    /// <summary>True when keyboard focus is in one of the player's panels (its lists and buttons then get the keys).</summary>
+    public bool IsFocusInPanel => _focusInPanel;
+
+    internal void Initialize(MpvPlaybackEngine? engine, VideoPresenter? presenter, string? engineProblem, AppServices services, Func<ShortcutMap> shortcuts)
     {
-        _history = history;
-        _settings = settings;
-        _recorder = new ProgressRecorder(history, () => _settings().RememberHistory, TimeProvider.System);
+        _services = services;
+        _shortcuts = shortcuts;
+        _recorder = new ProgressRecorder(services.History, () => services.Settings.Current.RememberHistory, TimeProvider.System);
         _engineProblem = engineProblem;
         if (engine is null || presenter is null)
         {
@@ -163,7 +183,62 @@ public sealed partial class PlayerView : UserControl
         engine.StatusChanged += OnEngineStatusChanged;
         engine.TracksChanged += OnTracksChanged;
         engine.NoticeRaised += (_, notice) => ShowToast(notice, NoticeDuration);
-        VolumeSlider.Value = engine.Volume * 100;
+
+        // Sound level and mute are remembered from the last session.
+        var settings = services.Settings.Current;
+        engine.Volume = settings.Volume;
+        engine.IsMuted = settings.Muted;
+        VolumeSlider.Value = settings.Volume * 100;
+        ApplySettings(settings);
+        ApplyShortcutLabels();
+        UpdateVolumeGlyph();
+    }
+
+    /// <summary>Applies settings that take effect during playback (pitch, subtitle look, idle delay).</summary>
+    public void ApplySettings(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        _overlay.Delay = TimeSpan.FromSeconds(settings.ControlsHideDelaySeconds);
+        if (_engine is null)
+        {
+            return;
+        }
+
+        _engine.PreservePitch = settings.PreservePitch;
+        _engine.ApplySubtitleStyle(settings.SubtitleStyle);
+        ShowLook(settings.SubtitleStyle);
+    }
+
+    /// <summary>Updates tooltips, menu hints and the shortcut list after the keys changed.</summary>
+    public void ApplyShortcutLabels()
+    {
+        var map = _shortcuts();
+        var playing = _engine?.Status == PlaybackStatus.Playing;
+        AutomationName(PlayPauseButton, playing ? "Pause" : "Play", map.WithKey(playing ? "Pause" : "Play", PlayerCommand.PlayPause));
+        UpdateVolumeGlyph();
+        SetWindowLabels();
+        InfoMenuItem.KeyboardAcceleratorTextOverride = map.Label(PlayerCommand.PlaybackInfo) ?? string.Empty;
+        AdjustMenuItem.KeyboardAcceleratorTextOverride = map.Label(PlayerCommand.Adjustments) ?? string.Empty;
+        ShortcutsMenuItem.KeyboardAcceleratorTextOverride = map.Label(PlayerCommand.Shortcuts) ?? string.Empty;
+        ToolTipService.SetToolTip(InfoCloseButton, map.WithKey("Close", PlayerCommand.PlaybackInfo));
+        ToolTipService.SetToolTip(AdjustCloseButton, map.WithKey("Close", PlayerCommand.Adjustments));
+        ToolTipService.SetToolTip(ShortcutsCloseButton, map.WithKey("Close", PlayerCommand.Shortcuts));
+        Describe(SubtitleEarlierButton, "Show subtitles earlier", PlayerCommand.SubtitlesEarlier);
+        Describe(SubtitleLaterButton, "Show subtitles later", PlayerCommand.SubtitlesLater);
+        Describe(AudioEarlierButton, "Play sound earlier", PlayerCommand.AudioEarlier);
+        Describe(AudioLaterButton, "Play sound later", PlayerCommand.AudioLater);
+        var earlier = map.Label(PlayerCommand.SubtitlesEarlier);
+        var later = map.Label(PlayerCommand.SubtitlesLater);
+        SyncHint.Text = earlier is not null && later is not null
+            ? $"{earlier} and {later} move subtitles while watching; each press is 0.1 s."
+            : "Each press moves by 0.1 s.";
+        BuildShortcutList();
+
+        void Describe(Button button, string name, PlayerCommand command)
+        {
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
+            ToolTipService.SetToolTip(button, map.WithKey(name, command));
+        }
     }
 
     /// <summary>Releases the video surface before the engine and presenter are disposed.</summary>
@@ -182,10 +257,14 @@ public sealed partial class PlayerView : UserControl
         ShowToast(problem ?? $"Subtitles added: {Path.GetFileName(path)}", problem is null ? ToastDuration : NoticeDuration);
     }
 
-    /// <summary>Opens a file, resuming from the saved position when Settings allow it.</summary>
-    public async Task OpenAsync(string path)
+    /// <summary>
+    /// Opens a file. A part-watched file resumes, asks, or starts over as Settings say
+    /// (<paramref name="fromStart"/> always starts over); the file's remembered tracks,
+    /// timing offsets, picture shape and speed are restored.
+    /// </summary>
+    public async Task OpenAsync(string path, bool fromStart = false)
     {
-        if (_history is null)
+        if (_services is null)
         {
             return;
         }
@@ -198,53 +277,86 @@ public sealed partial class PlayerView : UserControl
             return;
         }
 
-        await SaveProgressAsync();
+        await LeaveCurrentFileAsync();
 
         _path = path;
         Title = MediaFileTypes.TitleFromPath(path);
         OpeningText.Text = Title;
-        ResumeNotice.Visibility = Visibility.Collapsed;
-        ResetSpeedMenu();
-        SetAspect(AspectMode.Original, announce: false);
+        AudioOnlyText.Text = Title;
+        AudioOnlyPanel.Visibility = Visibility.Collapsed;
+        HideResumeNotice();
         SetTimeline(TimeSpan.Zero, TimeSpan.Zero);
         UpdateTracksButton();
 
-        var saved = await _history.FindAsync(path);
-        var resumeAt = _settings().ResumePlayback ? WatchProgress.ResumePosition(saved) : TimeSpan.Zero;
+        var settings = _services.Settings.Current;
+        var saved = await Safely(() => _services.History.FindAsync(path), null);
+        var choices = await Safely(() => _services.ItemState.GetPreferencesAsync(path), PlaybackPreferences.None);
 
-        _overlay.Delay = TimeSpan.FromSeconds(_settings().ControlsHideDelaySeconds);
+        // Playing a file again lets history decide whether it's watched.
+        await Safely(async () => { await _services.ItemState.SetWatchedAsync(path, null); return true; }, false);
+
+        var savedPosition = fromStart ? TimeSpan.Zero : WatchProgress.ResumePosition(saved);
+        var ask = savedPosition > TimeSpan.Zero && settings.Resume == ResumeMode.Ask;
+        var resumeAt = settings.Resume == ResumeMode.StartOver ? TimeSpan.Zero : savedPosition;
+
+        ApplySettings(settings);
+        SetSpeed(choices.Speed ?? PlaybackSpeed.Normal, announce: false);
+        SetAspect(choices.Aspect ?? AspectMode.Original, announce: false);
         _overlay.Poke();
-        await _engine.OpenAsync(path, resumeAt);
+        await _engine.OpenAsync(path, resumeAt, startPaused: ask);
+        if (_engine.Status is PlaybackStatus.Failed || !string.Equals(_path, path, StringComparison.Ordinal))
+        {
+            return;
+        }
 
-        if (resumeAt > TimeSpan.Zero && _engine.Status is not PlaybackStatus.Failed)
+        _engine.SubtitleDelay = choices.SubtitleDelay;
+        _engine.AudioDelay = choices.AudioDelay;
+        ShowOffsets();
+        _pendingChoices = choices;
+        ApplyRememberedTracks();
+
+        if (ask)
+        {
+            _asking = true;
+            ResumeText.Text = $"You stopped at {TimeFormat.Clock(resumeAt)}";
+            ResumeButton.Visibility = Visibility.Visible;
+            ResumeNotice.Visibility = Visibility.Visible;
+            ResumeButton.Focus(FocusState.Programmatic);
+        }
+        else if (resumeAt > TimeSpan.Zero)
         {
             ResumeText.Text = $"Resumed at {TimeFormat.Clock(resumeAt)}";
+            ResumeButton.Visibility = Visibility.Collapsed;
             ResumeNotice.Visibility = Visibility.Visible;
             _resumeNoticeTimer.Interval = ResumeNoticeDuration;
             _resumeNoticeTimer.Start();
         }
     }
 
-    /// <summary>Saves the position and closes the file; called when leaving the player.</summary>
+    /// <summary>Saves the position and choices and closes the file; called when leaving the player.</summary>
     public async Task CloseAsync()
     {
-        await SaveProgressAsync();
+        await LeaveCurrentFileAsync();
         _ticker.Stop();
         _resumeNoticeTimer.Stop();
         _singleTapTimer.Stop();
         _toastTimer.Stop();
         Toast.Opacity = 0;
+        HideResumeNotice();
         SetInfoVisible(false);
+        SetAdjustVisible(false);
+        SetShortcutsVisible(false);
         _overlay.Reset();
         _cursor.Show();
         _engine?.Close();
         _path = null;
+        await SaveVolumeAsync();
     }
 
     /// <summary>Writes the current position to history now (also used when the window closes).</summary>
     public async Task SaveProgressAsync()
     {
-        if (_engine is null || _recorder is null || _path is null)
+        if (_engine is null || _recorder is null || _path is null || _asking)
         {
             return;
         }
@@ -264,25 +376,50 @@ public sealed partial class PlayerView : UserControl
         if (isMini)
         {
             SetInfoVisible(false);
+            SetAdjustVisible(false);
+            SetShortcutsVisible(false);
         }
+
         FullscreenGlyph.Glyph = isFullscreen ? ExitFullscreenGlyph : EnterFullscreenGlyph;
-        AutomationName(FullscreenButton, isFullscreen ? "Exit full screen" : "Full screen", isFullscreen ? "Exit full screen (F or Esc)" : "Full screen (F)");
         MiniPlayerGlyph.Glyph = isMini ? ExitMiniGlyph : EnterMiniGlyph;
-        AutomationName(MiniPlayerButton, isMini ? "Return to full window" : "Mini player", isMini ? "Return to full window (P or Esc)" : "Mini player (P)");
+        _isFullscreen = isFullscreen;
+        SetWindowLabels();
         _overlay.Poke();
+        UpdateSubtitleLift();
     }
 
-    /// <summary>Playback keyboard shortcuts. Returns true when the key was used.</summary>
-    public bool HandleKey(VirtualKey key, bool control, bool shift)
+    private void SetWindowLabels()
     {
-        if (control)
+        var map = _shortcuts();
+        var fullscreenKey = map.Label(PlayerCommand.Fullscreen);
+        var miniKey = map.Label(PlayerCommand.MiniPlayer);
+        AutomationName(FullscreenButton, _isFullscreen ? "Exit full screen" : "Full screen",
+            _isFullscreen ? $"Exit full screen ({(fullscreenKey is null ? "Esc" : fullscreenKey + " or Esc")})" : map.WithKey("Full screen", PlayerCommand.Fullscreen));
+        AutomationName(MiniPlayerButton, _isMini ? "Return to full window" : "Mini player",
+            _isMini ? $"Return to full window ({(miniKey is null ? "Esc" : miniKey + " or Esc")})" : map.WithKey("Mini player", PlayerCommand.MiniPlayer));
+    }
+
+    /// <summary>
+    /// Handles a key press already matched to a command. Returns true when the command was
+    /// used. Keys while focus is in a panel's list or button go to that control instead,
+    /// except the key that closes the panel.
+    /// </summary>
+    public bool HandleCommand(PlayerCommand command)
+    {
+        if (_focusInPanel && command is not (PlayerCommand.Adjustments or PlayerCommand.Shortcuts or PlayerCommand.PlaybackInfo))
         {
             return false;
         }
 
-        if (key == MediaStopKey || key == VirtualKey.S)
+        if (command == PlayerCommand.Stop)
         {
             StopRequested?.Invoke(this, EventArgs.Empty);
+            return true;
+        }
+
+        if (command == PlayerCommand.Shortcuts)
+        {
+            SetShortcutsVisible(ShortcutsPanel.Visibility != Visibility.Visible);
             return true;
         }
 
@@ -291,67 +428,101 @@ public sealed partial class PlayerView : UserControl
             return false;
         }
 
-        switch (key)
+        switch (command)
         {
-            case VirtualKey.Space:
-            case VirtualKey.K:
-            case MediaPlayPauseKey:
-                TogglePlayPause();
+            case PlayerCommand.PlayPause:
+                if (_asking)
+                {
+                    Resume();
+                }
+                else
+                {
+                    TogglePlayPause();
+                }
+
                 break;
-            case VirtualKey.C:
-                CycleSubtitles();
+            case PlayerCommand.SeekBack:
+                SeekBy(-SmallStep);
                 break;
-            case VirtualKey.A:
-                CycleAudio();
+            case PlayerCommand.SeekForward:
+                SeekBy(SmallStep);
                 break;
-            case VirtualKey.R:
-                SetAspect(AspectModes.Next(_engine.Aspect), announce: true);
+            case PlayerCommand.JumpBack:
+                SeekBy(-JumpStep);
                 break;
-            case CloseBracketKey:
-                SetSpeed(PlaybackSpeed.Faster(_engine.Rate), announce: true);
+            case PlayerCommand.JumpForward:
+                SeekBy(JumpStep);
                 break;
-            case OpenBracketKey:
-                SetSpeed(PlaybackSpeed.Slower(_engine.Rate), announce: true);
+            case PlayerCommand.SeekBackLong:
+                SeekBy(-LongStep);
                 break;
-            case BackslashKey:
-                SetSpeed(PlaybackSpeed.Normal, announce: true);
+            case PlayerCommand.SeekForwardLong:
+                SeekBy(LongStep);
                 break;
-            case VirtualKey.I:
-                SetInfoVisible(InfoPanel.Visibility != Visibility.Visible);
-                break;
-            case VirtualKey.Left:
-                SeekBy(-(shift ? LargeStep * 3 : SmallStep));
-                break;
-            case VirtualKey.Right:
-                SeekBy(shift ? LargeStep * 3 : SmallStep);
-                break;
-            case VirtualKey.J:
-                SeekBy(-LargeStep);
-                break;
-            case VirtualKey.L:
-                SeekBy(LargeStep);
-                break;
-            case VirtualKey.Home:
+            case PlayerCommand.GoToStart:
                 _engine.Seek(TimeSpan.Zero);
                 break;
-            case VirtualKey.End:
+            case PlayerCommand.GoToEnd:
                 _engine.Seek(_engine.Duration - TimeSpan.FromSeconds(1));
                 break;
-            case VirtualKey.Up:
-                VolumeSlider.Value = Math.Min(100, VolumeSlider.Value + 5);
+            case PlayerCommand.FrameBack:
+                EndAsking();
+                _engine.StepFrame(forward: false);
                 break;
-            case VirtualKey.Down:
-                VolumeSlider.Value = Math.Max(0, VolumeSlider.Value - 5);
+            case PlayerCommand.FrameForward:
+                EndAsking();
+                _engine.StepFrame(forward: true);
                 break;
-            case VirtualKey.M:
+            case PlayerCommand.VolumeUp:
+                ChangeVolume(VolumeStep);
+                break;
+            case PlayerCommand.VolumeDown:
+                ChangeVolume(-VolumeStep);
+                break;
+            case PlayerCommand.Mute:
                 ToggleMute();
                 break;
-            case VirtualKey.F:
-            case VirtualKey.F11:
+            case PlayerCommand.Faster:
+                SetSpeed(PlaybackSpeed.Faster(_engine.Rate), announce: true);
+                break;
+            case PlayerCommand.Slower:
+                SetSpeed(PlaybackSpeed.Slower(_engine.Rate), announce: true);
+                break;
+            case PlayerCommand.NormalSpeed:
+                SetSpeed(PlaybackSpeed.Normal, announce: true);
+                break;
+            case PlayerCommand.NextSubtitle:
+                CycleSubtitles();
+                break;
+            case PlayerCommand.NextAudio:
+                CycleAudio();
+                break;
+            case PlayerCommand.SubtitlesEarlier:
+                NudgeSubtitles(-1, announce: true);
+                break;
+            case PlayerCommand.SubtitlesLater:
+                NudgeSubtitles(1, announce: true);
+                break;
+            case PlayerCommand.AudioEarlier:
+                NudgeAudio(-1, announce: true);
+                break;
+            case PlayerCommand.AudioLater:
+                NudgeAudio(1, announce: true);
+                break;
+            case PlayerCommand.Fullscreen:
                 FullscreenToggleRequested?.Invoke(this, EventArgs.Empty);
                 break;
-            case VirtualKey.P:
+            case PlayerCommand.MiniPlayer:
                 MiniPlayerToggleRequested?.Invoke(this, EventArgs.Empty);
+                break;
+            case PlayerCommand.NextPictureShape:
+                SetAspect(AspectModes.Next(_engine.Aspect), announce: true);
+                break;
+            case PlayerCommand.PlaybackInfo:
+                SetInfoVisible(InfoPanel.Visibility != Visibility.Visible);
+                break;
+            case PlayerCommand.Adjustments:
+                SetAdjustVisible(AdjustPanel.Visibility != Visibility.Visible);
                 break;
             default:
                 return false;
@@ -359,6 +530,30 @@ public sealed partial class PlayerView : UserControl
 
         UpdateTimelineNow();
         _overlay.Poke();
+        return true;
+    }
+
+    /// <summary>Esc while a panel is open closes it (the shortcut list first). Returns true when one was closed.</summary>
+    public bool CloseTopPanel()
+    {
+        if (ShortcutsPanel.Visibility == Visibility.Visible)
+        {
+            SetShortcutsVisible(false);
+        }
+        else if (AdjustPanel.Visibility == Visibility.Visible)
+        {
+            SetAdjustVisible(false);
+        }
+        else if (InfoPanel.Visibility == Visibility.Visible)
+        {
+            SetInfoVisible(false);
+        }
+        else
+        {
+            return false;
+        }
+
+        Focus(FocusState.Programmatic);
         return true;
     }
 
@@ -378,6 +573,7 @@ public sealed partial class PlayerView : UserControl
                 break;
             case PlaybackStatus.Playing:
                 VisualStateManager.GoToState(this, "Ready", false);
+                EndAsking();
                 _ticker.Start();
                 break;
             case PlaybackStatus.Paused:
@@ -391,6 +587,7 @@ public sealed partial class PlayerView : UserControl
                 break;
             case PlaybackStatus.Failed:
                 SetInfoVisible(false);
+                SetAdjustVisible(false);
                 ShowFailure(_engine.Failure ?? new PlaybackFailure(PlaybackFailureKind.Failed));
                 break;
             case PlaybackStatus.Idle:
@@ -400,7 +597,7 @@ public sealed partial class PlayerView : UserControl
 
         var playing = _engine.Status == PlaybackStatus.Playing;
         PlayPauseGlyph.Glyph = playing ? PauseGlyph : PlayGlyph;
-        AutomationName(PlayPauseButton, playing ? "Pause" : "Play", playing ? "Pause (Space)" : "Play (Space)");
+        AutomationName(PlayPauseButton, playing ? "Pause" : "Play", _shortcuts().WithKey(playing ? "Pause" : "Play", PlayerCommand.PlayPause));
         _overlay.Poke();
     }
 
@@ -443,6 +640,8 @@ public sealed partial class PlayerView : UserControl
     {
         _ticker.Stop();
         _cursor.Show();
+        HideResumeNotice();
+        AudioOnlyPanel.Visibility = Visibility.Collapsed;
         var fileName = _path is null ? string.Empty : Path.GetFileName(_path);
         ErrorRemoveButton.Visibility = Visibility.Collapsed;
         VisualStateManager.GoToState(this, "CriticalTone", false);
@@ -462,11 +661,11 @@ public sealed partial class PlayerView : UserControl
                 ErrorDetail.Text = _path ?? string.Empty;
                 _ = ShowRemoveIfRememberedAsync();
                 break;
-            case PlaybackFailureKind.Unsupported when _path is not null && !MediaFileTypes.IsVideoFile(_path):
+            case PlaybackFailureKind.Unsupported when _path is not null && !MediaFileTypes.IsPlayableFile(_path):
                 ErrorGlyph.Glyph = VideoGlyph;
                 VisualStateManager.GoToState(this, "NeutralTone", false);
                 ErrorTitle.Text = "Aperture can’t play this kind of file";
-                ErrorMessage.Text = $"“{fileName}” isn’t a video. Aperture opens MP4, MKV, MOV, WebM, AVI and other common video files.";
+                ErrorMessage.Text = $"“{fileName}” isn’t a video or sound file. Aperture opens MP4, MKV, MOV, WebM, AVI and other common video files, and MP3, M4A, FLAC and other audio.";
                 ErrorDetail.Text = string.Empty;
                 break;
             case PlaybackFailureKind.Unsupported:
@@ -497,10 +696,35 @@ public sealed partial class PlayerView : UserControl
 
     private async Task ShowRemoveIfRememberedAsync()
     {
-        if (_history is not null && _path is not null && await _history.FindAsync(_path) is not null)
+        if (_services is not { } services || _path is not { } path)
+        {
+            return;
+        }
+
+        if (await Safely(() => services.History.FindAsync(path), null) is not null)
         {
             ErrorRemoveButton.Visibility = Visibility.Visible;
         }
+    }
+
+    /// <summary>Saves where the user was and what they chose for the file being left.</summary>
+    private async Task LeaveCurrentFileAsync()
+    {
+        _pendingChoices = null;
+        if (_engine is null || _services is null || _path is null)
+        {
+            return;
+        }
+
+        await SaveProgressAsync();
+        if (_engine.Status is PlaybackStatus.Playing or PlaybackStatus.Paused or PlaybackStatus.Ended)
+        {
+            var path = _path;
+            var choices = RememberedChoices.Capture(_engine.Tracks, _engine.SubtitleDelay, _engine.AudioDelay, _engine.Aspect, _engine.Rate);
+            await Safely(async () => { await _services.ItemState.SavePreferencesAsync(path, choices); return true; }, false);
+        }
+
+        _asking = false;
     }
 
     private static async Task SaveSafelyAsync(Func<Task> save)
@@ -509,10 +733,62 @@ public sealed partial class PlayerView : UserControl
         {
             await save();
         }
-        catch (Exception error) when (error is Microsoft.Data.Sqlite.SqliteException or IOException)
+        catch (Exception error) when (error is System.Data.Common.DbException or IOException)
         {
             AppLog.Error("Could not save playback position", error);
         }
+    }
+
+    private static async Task<T> Safely<T>(Func<Task<T>> read, T fallback)
+    {
+        try
+        {
+            return await read();
+        }
+        catch (Exception error) when (error is System.Data.Common.DbException or IOException)
+        {
+            AppLog.Error("Could not read or write the player's records", error);
+            return fallback;
+        }
+    }
+
+    // ===== Resume =====
+
+    private void Resume()
+    {
+        EndAsking();
+        _engine?.Play();
+        Focus(FocusState.Programmatic);
+    }
+
+    private void EndAsking()
+    {
+        if (!_asking)
+        {
+            return;
+        }
+
+        _asking = false;
+        HideResumeNotice();
+    }
+
+    private void HideResumeNotice()
+    {
+        _resumeNoticeTimer.Stop();
+        ResumeNotice.Visibility = Visibility.Collapsed;
+        ResumeButton.Visibility = Visibility.Collapsed;
+    }
+
+    private void OnResumeClick(object sender, RoutedEventArgs e) => Resume();
+
+    private void OnStartOverClick(object sender, RoutedEventArgs e)
+    {
+        _asking = false;
+        _engine?.Seek(TimeSpan.Zero);
+        _engine?.Play();
+        HideResumeNotice();
+        UpdateTimelineNow();
+        Focus(FocusState.Programmatic);
     }
 
     // ===== Transport =====
@@ -524,7 +800,11 @@ public sealed partial class PlayerView : UserControl
             return;
         }
 
-        if (_engine.Status == PlaybackStatus.Playing)
+        if (_asking)
+        {
+            Resume();
+        }
+        else if (_engine.Status == PlaybackStatus.Playing)
         {
             _engine.Pause();
         }
@@ -542,6 +822,12 @@ public sealed partial class PlayerView : UserControl
         }
     }
 
+    private void ChangeVolume(double change)
+    {
+        VolumeSlider.Value = Math.Clamp(VolumeSlider.Value + change, 0, 100);
+        ShowToast(_engine?.IsMuted == true ? $"Volume {VolumeSlider.Value:0} (muted)" : $"Volume {VolumeSlider.Value:0}", ToastDuration);
+    }
+
     private void ToggleMute()
     {
         if (_engine is null)
@@ -551,13 +837,36 @@ public sealed partial class PlayerView : UserControl
 
         _engine.IsMuted = !_engine.IsMuted;
         UpdateVolumeGlyph();
+        ShowToast(_engine.IsMuted ? "Muted" : "Sound on", ToastDuration);
+        _volumeSaveTimer.Stop();
+        _volumeSaveTimer.Start();
     }
 
     private void UpdateVolumeGlyph()
     {
         var muted = _engine is null || _engine.IsMuted || VolumeSlider.Value == 0;
         VolumeGlyph.Glyph = muted ? MuteGlyph : SpeakerGlyph;
-        AutomationName(VolumeButton, _engine?.IsMuted == true ? "Unmute" : "Mute", _engine?.IsMuted == true ? "Unmute (M)" : "Mute (M)");
+        var name = _engine?.IsMuted == true ? "Unmute" : "Mute";
+        AutomationName(VolumeButton, name, _shortcuts().WithKey(name, PlayerCommand.Mute));
+    }
+
+    private async Task SaveVolumeAsync()
+    {
+        _volumeSaveTimer.Stop();
+        if (_services is null || _engine is null)
+        {
+            return;
+        }
+
+        var current = _services.Settings.Current;
+        var updated = current with { Volume = Math.Round(_engine.Volume, 2), Muted = _engine.IsMuted };
+        if (updated == current)
+        {
+            return;
+        }
+
+        _services.Settings.Current = updated;
+        await Safely(async () => { await _services.SettingsStore.SaveAsync(updated); return true; }, false);
     }
 
     private void OnPlayPauseClick(object sender, RoutedEventArgs e) => TogglePlayPause();
@@ -595,6 +904,24 @@ public sealed partial class PlayerView : UserControl
         }
 
         UpdateVolumeGlyph();
+        _volumeSaveTimer.Stop();
+        _volumeSaveTimer.Start();
+    }
+
+    private void OnVideoWheel(object sender, PointerRoutedEventArgs e)
+    {
+        if (_engine is null || ErrorPanel.Visibility == Visibility.Visible)
+        {
+            return;
+        }
+
+        var delta = e.GetCurrentPoint(InputLayer).Properties.MouseWheelDelta;
+        if (delta != 0)
+        {
+            ChangeVolume(delta > 0 ? VolumeStep : -VolumeStep);
+            _overlay.Poke();
+            e.Handled = true;
+        }
     }
 
     // ===== Speed, picture shape, tracks =====
@@ -644,6 +971,7 @@ public sealed partial class PlayerView : UserControl
             item.IsChecked = item.Tag is double value && Math.Abs(value - speed) < 0.001;
         }
 
+        SpeedMenu.Text = Math.Abs(speed - PlaybackSpeed.Normal) < 0.001 ? "Playback speed" : $"Playback speed: {PlaybackSpeed.Label(speed)}";
         if (announce)
         {
             ShowToast($"Speed {PlaybackSpeed.Label(speed)}", ToastDuration);
@@ -669,9 +997,47 @@ public sealed partial class PlayerView : UserControl
         }
     }
 
-    private void ResetSpeedMenu() => SetSpeed(PlaybackSpeed.Normal, announce: false);
+    private void OnTracksChanged(object? sender, EventArgs e)
+    {
+        UpdateTracksButton();
+        ApplyRememberedTracks();
+        UpdateAudioOnly();
+    }
 
-    private void OnTracksChanged(object? sender, EventArgs e) => UpdateTracksButton();
+    /// <summary>Selects the file's remembered audio and subtitle tracks once the track list is known.</summary>
+    private void ApplyRememberedTracks()
+    {
+        if (_engine is null || _pendingChoices is not { } choices || _engine.Tracks.Count == 0)
+        {
+            return;
+        }
+
+        _pendingChoices = null;
+        var (audio, subtitle, subtitlesOff) = RememberedChoices.Tracks(choices, _engine.Tracks);
+        if (audio is { } audioId)
+        {
+            _engine.SelectAudioTrack(audioId);
+        }
+
+        if (subtitle is { } subtitleId)
+        {
+            _engine.SelectSubtitleTrack(subtitleId);
+        }
+        else if (subtitlesOff)
+        {
+            _engine.SelectSubtitleTrack(null);
+        }
+
+        UpdateAudioOnly();
+    }
+
+    /// <summary>Files with sound but no picture get a calm placeholder instead of black.</summary>
+    private void UpdateAudioOnly()
+    {
+        var tracks = _engine?.Tracks ?? [];
+        var soundOnly = tracks.Any(t => t.Kind == TrackKind.Audio) && !tracks.Any(t => t.Kind == TrackKind.Video);
+        AudioOnlyPanel.Visibility = soundOnly && ErrorPanel.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     private void UpdateTracksButton()
     {
@@ -770,6 +1136,250 @@ public sealed partial class PlayerView : UserControl
 
     private void OnAddSubtitleClick(object sender, RoutedEventArgs e) => SubtitlePickRequested?.Invoke(this, EventArgs.Empty);
 
+    // ===== Sync and subtitle look =====
+
+    private void NudgeSubtitles(int steps, bool announce)
+    {
+        if (_engine is null)
+        {
+            return;
+        }
+
+        _engine.SubtitleDelay = SyncOffset.Nudge(_engine.SubtitleDelay, steps);
+        ShowOffsets();
+        if (announce)
+        {
+            ShowToast(SyncOffset.Describe("Subtitles", _engine.SubtitleDelay), ToastDuration);
+        }
+    }
+
+    private void NudgeAudio(int steps, bool announce)
+    {
+        if (_engine is null)
+        {
+            return;
+        }
+
+        _engine.AudioDelay = SyncOffset.Nudge(_engine.AudioDelay, steps);
+        ShowOffsets();
+        if (announce)
+        {
+            ShowToast(SyncOffset.Describe("Sound", _engine.AudioDelay), ToastDuration);
+        }
+    }
+
+    private void ShowOffsets()
+    {
+        var subtitle = _engine?.SubtitleDelay ?? TimeSpan.Zero;
+        var audio = _engine?.AudioDelay ?? TimeSpan.Zero;
+        SubtitleOffsetText.Text = SyncOffset.Label(subtitle);
+        AudioOffsetText.Text = SyncOffset.Label(audio);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SubtitleOffsetText, SyncOffset.Describe("Subtitles", subtitle));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(AudioOffsetText, SyncOffset.Describe("Sound", audio));
+        SubtitleResetButton.IsEnabled = subtitle != TimeSpan.Zero;
+        AudioResetButton.IsEnabled = audio != TimeSpan.Zero;
+    }
+
+    private void OnSubtitleEarlierClick(object sender, RoutedEventArgs e) => NudgeSubtitles(-1, announce: false);
+
+    private void OnSubtitleLaterClick(object sender, RoutedEventArgs e) => NudgeSubtitles(1, announce: false);
+
+    private void OnAudioEarlierClick(object sender, RoutedEventArgs e) => NudgeAudio(-1, announce: false);
+
+    private void OnAudioLaterClick(object sender, RoutedEventArgs e) => NudgeAudio(1, announce: false);
+
+    private void OnSubtitleResetClick(object sender, RoutedEventArgs e)
+    {
+        if (_engine is not null)
+        {
+            _engine.SubtitleDelay = TimeSpan.Zero;
+            ShowOffsets();
+        }
+    }
+
+    private void OnAudioResetClick(object sender, RoutedEventArgs e)
+    {
+        if (_engine is not null)
+        {
+            _engine.AudioDelay = TimeSpan.Zero;
+            ShowOffsets();
+        }
+    }
+
+    private void BuildLookChoices()
+    {
+        foreach (var size in Enum.GetValues<SubtitleSize>())
+        {
+            SubtitleSizeBox.Items.Add(new ComboBoxItem { Content = SubtitleStyle.Label(size), Tag = size });
+        }
+
+        foreach (var color in Enum.GetValues<SubtitleColor>())
+        {
+            SubtitleColorBox.Items.Add(new ComboBoxItem { Content = SubtitleStyle.Label(color), Tag = color });
+        }
+
+        foreach (var background in Enum.GetValues<SubtitleBackground>())
+        {
+            SubtitleBackgroundBox.Items.Add(new ComboBoxItem { Content = SubtitleStyle.Label(background), Tag = background });
+        }
+    }
+
+    private void ShowLook(SubtitleStyle style)
+    {
+        _updatingLook = true;
+        SubtitleSizeBox.SelectedItem = SubtitleSizeBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => i.Tag is SubtitleSize s && s == style.Size);
+        SubtitleColorBox.SelectedItem = SubtitleColorBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => i.Tag is SubtitleColor c && c == style.Color);
+        SubtitleBackgroundBox.SelectedItem = SubtitleBackgroundBox.Items.OfType<ComboBoxItem>().FirstOrDefault(i => i.Tag is SubtitleBackground b && b == style.Background);
+        _updatingLook = false;
+    }
+
+    private void OnSubtitleLookChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingLook || _engine is null || _services is null)
+        {
+            return;
+        }
+
+        var current = _services.Settings.Current.SubtitleStyle;
+        var style = new SubtitleStyle(
+            SubtitleSizeBox.SelectedItem is ComboBoxItem { Tag: SubtitleSize size } ? size : current.Size,
+            SubtitleColorBox.SelectedItem is ComboBoxItem { Tag: SubtitleColor color } ? color : current.Color,
+            SubtitleBackgroundBox.SelectedItem is ComboBoxItem { Tag: SubtitleBackground background } ? background : current.Background);
+        if (style == current)
+        {
+            return;
+        }
+
+        _engine.ApplySubtitleStyle(style);
+        SubtitleStyleChanged?.Invoke(this, style);
+    }
+
+    private void SetAdjustVisible(bool visible)
+    {
+        if (_isMini || _engine is null)
+        {
+            visible = false;
+        }
+
+        AdjustPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        AdjustMenuItem.IsChecked = visible;
+        if (visible)
+        {
+            ShowOffsets();
+            if (_services is not null)
+            {
+                ShowLook(_services.Settings.Current.SubtitleStyle);
+            }
+
+            if (InfoPanel.Visibility == Visibility.Visible)
+            {
+                // Both panels fit side by side only on wide windows.
+                SetInfoVisible(Root.ActualWidth >= 800);
+            }
+        }
+        else
+        {
+            _focusInPanel = false;
+        }
+    }
+
+    private void OnAdjustMenuClick(object sender, RoutedEventArgs e) => SetAdjustVisible(AdjustMenuItem.IsChecked);
+
+    private void OnAdjustCloseClick(object sender, RoutedEventArgs e)
+    {
+        SetAdjustVisible(false);
+        Focus(FocusState.Programmatic);
+    }
+
+    // ===== Shortcut list =====
+
+    private void BuildShortcutList()
+    {
+        var map = _shortcuts();
+        ShortcutsLeft.Children.Clear();
+        ShortcutsRight.Children.Clear();
+        var groups = PlayerCommands.All.GroupBy(PlayerCommands.Group).ToList();
+        for (var g = 0; g < groups.Count; g++)
+        {
+            var section = new StackPanel { Spacing = 4 };
+            var header = ShortcutText(PlayerCommands.GroupLabel(groups[g].Key), "CaptionTextStyle", secondary: true);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHeadingLevel(header, Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level3);
+            section.Children.Add(header);
+            foreach (var command in groups[g])
+            {
+                var keys = map.KeysFor(command);
+                if (keys.Count == 0)
+                {
+                    continue;
+                }
+
+                var row = new Grid { ColumnSpacing = 16 };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.Children.Add(ShortcutText(PlayerCommands.Label(command), "BodyTextStyle", secondary: false));
+                var key = ShortcutText(string.Join(", ", keys), "BodyStrongTextStyle", secondary: false);
+                Grid.SetColumn(key, 1);
+                row.Children.Add(key);
+                section.Children.Add(row);
+            }
+
+            // Playback, seeking and sound on the left; subtitles and picture on the right.
+            (g < 3 ? ShortcutsLeft : ShortcutsRight).Children.Add(section);
+        }
+
+        var global = new StackPanel { Spacing = 4 };
+        global.Children.Add(ShortcutText("Everywhere", "CaptionTextStyle", secondary: true));
+        foreach (var (label, key) in new (string, string)[] { ("Open a file", "Ctrl+O"), ("Search", "Ctrl+F"), ("Library", "Ctrl+L"), ("Settings", "Ctrl+,"), ("Back, or leave full screen", "Esc") })
+        {
+            var row = new Grid { ColumnSpacing = 16 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.Children.Add(ShortcutText(label, "BodyTextStyle", secondary: false));
+            var keyText = ShortcutText(key, "BodyStrongTextStyle", secondary: false);
+            Grid.SetColumn(keyText, 1);
+            row.Children.Add(keyText);
+            global.Children.Add(row);
+        }
+
+        ShortcutsRight.Children.Add(global);
+    }
+
+    private static TextBlock ShortcutText(string text, string style, bool secondary) => new()
+    {
+        Text = text,
+        Style = (Style)Application.Current.Resources[style],
+        Foreground = (Brush)Application.Current.Resources[secondary ? "TextOnVideoSecondaryBrush" : "TextOnVideoBrush"],
+        TextWrapping = TextWrapping.NoWrap,
+    };
+
+    private void SetShortcutsVisible(bool visible)
+    {
+        if (_isMini)
+        {
+            visible = false;
+        }
+
+        ShortcutsPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (visible)
+        {
+            BuildShortcutList();
+        }
+        else
+        {
+            _focusInPanel = false;
+        }
+
+        _overlay.Poke();
+    }
+
+    private void OnShortcutsMenuClick(object sender, RoutedEventArgs e) => SetShortcutsVisible(true);
+
+    private void OnShortcutsCloseClick(object sender, RoutedEventArgs e)
+    {
+        SetShortcutsVisible(false);
+        Focus(FocusState.Programmatic);
+    }
+
     // ===== Toast and playback info =====
 
     private void ShowToast(string text, TimeSpan duration)
@@ -843,13 +1453,17 @@ public sealed partial class PlayerView : UserControl
     {
         Text = text,
         Style = (Style)Application.Current.Resources["CaptionTextStyle"],
-        Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[secondary ? "TextOnVideoSecondaryBrush" : "TextOnVideoBrush"],
+        Foreground = (Brush)Application.Current.Resources[secondary ? "TextOnVideoSecondaryBrush" : "TextOnVideoBrush"],
         TextWrapping = TextWrapping.Wrap,
     };
 
     private void OnInfoMenuClick(object sender, RoutedEventArgs e) => SetInfoVisible(InfoMenuItem.IsChecked);
 
-    private void OnInfoCloseClick(object sender, RoutedEventArgs e) => SetInfoVisible(false);
+    private void OnInfoCloseClick(object sender, RoutedEventArgs e)
+    {
+        SetInfoVisible(false);
+        Focus(FocusState.Programmatic);
+    }
 
     private void OnShowInFolderClick(object sender, RoutedEventArgs e)
     {
@@ -859,21 +1473,14 @@ public sealed partial class PlayerView : UserControl
         }
     }
 
-    private void OnStartOverClick(object sender, RoutedEventArgs e)
-    {
-        _engine?.Seek(TimeSpan.Zero);
-        _engine?.Play();
-        ResumeNotice.Visibility = Visibility.Collapsed;
-        UpdateTimelineNow();
-    }
-
     private void OnErrorOpenClick(object sender, RoutedEventArgs e) => OpenRequested?.Invoke(this, EventArgs.Empty);
 
     private async void OnErrorRemoveClick(object sender, RoutedEventArgs e)
     {
-        if (_history is not null && _path is not null)
+        if (_services is not null && _path is not null)
         {
-            await _history.RemoveAsync(_path);
+            var path = _path;
+            await Safely(async () => { await _services.History.RemoveAsync(path); return true; }, false);
         }
 
         DismissRequested?.Invoke(this, EventArgs.Empty);
@@ -885,18 +1492,18 @@ public sealed partial class PlayerView : UserControl
         _engine?.Status is not PlaybackStatus.Playing
         || _pointerOnControls
         || _keyboardInControls
+        || _focusInPanel
         || _menuOpen
-        || _scrubbing;
+        || _scrubbing
+        || _asking
+        || ShortcutsPanel.Visibility == Visibility.Visible;
 
     private void OnOverlayVisibilityChanged(object? sender, EventArgs e)
     {
         var visible = _overlay.IsVisible;
         Overlay.Opacity = visible ? 1 : 0;
         Overlay.IsHitTestVisible = visible;
-
-        // Keep subtitles clear of the controls while they are shown.
-        var lift = visible && !_isMini && Root.ActualHeight > 0 ? (ControlsPanel.ActualHeight + 16) / Root.ActualHeight : 0;
-        _engine?.LiftSubtitles(lift);
+        UpdateSubtitleLift();
         if (visible || !_pointerInside)
         {
             _cursor.Show();
@@ -908,6 +1515,15 @@ public sealed partial class PlayerView : UserControl
 
         OverlayVisibilityChanged?.Invoke(this, visible);
     }
+
+    /// <summary>Keeps subtitles clear of the controls while they are shown, at any window size.</summary>
+    private void UpdateSubtitleLift()
+    {
+        var lift = _overlay.IsVisible && !_isMini && Root.ActualHeight > 0 ? (ControlsPanel.ActualHeight + 16) / Root.ActualHeight : 0;
+        _engine?.LiftSubtitles(lift);
+    }
+
+    private void OnRootSizeChanged(object sender, SizeChangedEventArgs e) => UpdateSubtitleLift();
 
     private void OnRootPointerMoved(object sender, PointerRoutedEventArgs e)
     {
@@ -942,6 +1558,15 @@ public sealed partial class PlayerView : UserControl
         _overlay.Poke();
     }
 
+    private void OnPanelGotFocus(object sender, RoutedEventArgs e) => _focusInPanel = true;
+
+    private void OnPanelLostFocus(object sender, RoutedEventArgs e)
+    {
+        // Focus moving between controls inside the panel raises LostFocus then GotFocus.
+        _focusInPanel = false;
+        _overlay.Poke();
+    }
+
     private void OnFlyoutOpened(object sender, object e) => _menuOpen = true;
 
     private void OnFlyoutClosed(object sender, object e)
@@ -955,6 +1580,12 @@ public sealed partial class PlayerView : UserControl
         if (_engine?.Status is PlaybackStatus.Opening or PlaybackStatus.Failed)
         {
             return;
+        }
+
+        // A click on the video while a panel has focus gives the keys back to the player.
+        if (_focusInPanel)
+        {
+            Focus(FocusState.Pointer);
         }
 
         // Wait briefly so a double-click toggles full screen without also toggling play.

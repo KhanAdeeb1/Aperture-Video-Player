@@ -3,9 +3,10 @@
     Playback. Primary task: watch. The video is the only permanent element; the
     timeline and transport fade in on pointer or keyboard activity and fade out after
     the idle delay from Settings while playing. Audio and subtitle choices share one
-    button; speed, picture shape, playback info and file location live in the More
-    menu, not on the bar. The video itself is a swap chain drawn by libmpv; everything
-    here is ordinary XAML composed above it.
+    button; speed, picture shape, sync and subtitle look, playback info, shortcuts and
+    file location live in the More menu, not on the bar. Every action also has a key
+    from the user's shortcut map. The video itself is a swap chain drawn by libmpv;
+    everything here is ordinary XAML composed above it.
 -->
 <UserControl
     x:Class="Aperture.App.Views.PlayerView"
@@ -24,7 +25,8 @@
         x:Name="Root"
         Background="{ThemeResource SurfaceVideoBrush}"
         PointerExited="OnRootPointerExited"
-        PointerMoved="OnRootPointerMoved">
+        PointerMoved="OnRootPointerMoved"
+        SizeChanged="OnRootSizeChanged">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="StatusStates">
                 <VisualState x:Name="Opening">
@@ -64,6 +66,9 @@
                         <Setter Target="MoreButton.Visibility" Value="Collapsed" />
                         <Setter Target="TracksButton.Visibility" Value="Collapsed" />
                         <Setter Target="InfoPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="AdjustPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="ShortcutsPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="AudioOnlyText.Visibility" Value="Collapsed" />
                         <Setter Target="FullscreenButton.Visibility" Value="Collapsed" />
                         <Setter Target="ResumeNotice.Visibility" Value="Collapsed" />
                         <Setter Target="TopScrim.Height" Value="56" />
@@ -83,11 +88,41 @@
             AutomationProperties.Name="Video"
             IsHitTestVisible="False" />
 
-        <!-- Click toggles play; double-click toggles fullscreen. -->
+        <!-- Sound-only files (podcasts, music) have no picture: show what is playing instead of black. -->
+        <StackPanel
+            x:Name="AudioOnlyPanel"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="16"
+            Visibility="Collapsed">
+            <Grid
+                Width="96"
+                Height="96"
+                HorizontalAlignment="Center"
+                AutomationProperties.AccessibilityView="Raw">
+                <Ellipse Stroke="{ThemeResource StrokeStrongBrush}" StrokeThickness="1.5" />
+                <FontIcon
+                    FontSize="{StaticResource IconStatus}"
+                    Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                    Glyph="&#xE8D6;"
+                    Style="{StaticResource IconGlyphStyle}" />
+            </Grid>
+            <TextBlock
+                x:Name="AudioOnlyText"
+                MaxWidth="480"
+                HorizontalTextAlignment="Center"
+                Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                Style="{StaticResource BodyTextStyle}"
+                TextTrimming="CharacterEllipsis"
+                TextWrapping="NoWrap" />
+        </StackPanel>
+
+        <!-- Click toggles play; double-click toggles fullscreen; the wheel changes volume. -->
         <Border
             x:Name="InputLayer"
             Background="Transparent"
             DoubleTapped="OnVideoDoubleTapped"
+            PointerWheelChanged="OnVideoWheel"
             Tapped="OnVideoTapped" />
 
         <!-- ===== Overlay: scrims and controls, faded as one ===== -->
@@ -123,7 +158,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Resume notice: appears only when a file starts from a saved position. -->
+                <!-- Resume notice: after resuming, offers Start over; in "Ask" mode, asks first (paused). -->
                 <Border
                     x:Name="ResumeNotice"
                     Margin="4,0,0,12"
@@ -139,6 +174,13 @@
                             AutomationProperties.LiveSetting="Polite"
                             Foreground="{ThemeResource TextOnVideoBrush}"
                             Style="{StaticResource BodyTextStyle}" />
+                        <Button
+                            x:Name="ResumeButton"
+                            AutomationProperties.AutomationId="ResumeButton"
+                            Click="OnResumeClick"
+                            Content="Resume"
+                            Style="{StaticResource ApertureAccentButtonStyle}"
+                            Visibility="Collapsed" />
                         <Button
                             x:Name="StartOverButton"
                             AutomationProperties.AutomationId="StartOverButton"
@@ -278,15 +320,32 @@
                                     </MenuFlyoutSubItem.Icon>
                                 </MenuFlyoutSubItem>
                                 <ToggleMenuFlyoutItem
+                                    x:Name="AdjustMenuItem"
+                                    AutomationProperties.AutomationId="AdjustMenuItem"
+                                    Click="OnAdjustMenuClick"
+                                    Text="Sync and subtitle look">
+                                    <ToggleMenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE9E9;" />
+                                    </ToggleMenuFlyoutItem.Icon>
+                                </ToggleMenuFlyoutItem>
+                                <ToggleMenuFlyoutItem
                                     x:Name="InfoMenuItem"
                                     AutomationProperties.AutomationId="InfoMenuItem"
                                     Click="OnInfoMenuClick"
-                                    KeyboardAcceleratorTextOverride="I"
                                     Text="Playback info">
                                     <ToggleMenuFlyoutItem.Icon>
                                         <FontIcon Glyph="&#xE946;" />
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
+                                <MenuFlyoutItem
+                                    x:Name="ShortcutsMenuItem"
+                                    AutomationProperties.AutomationId="ShortcutsMenuItem"
+                                    Click="OnShortcutsMenuClick"
+                                    Text="Keyboard shortcuts">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE765;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Click="OnShowInFolderClick" Text="Show in folder">
                                     <MenuFlyoutItem.Icon>
@@ -368,6 +427,275 @@
                     Grid.Row="1"
                     AutomationProperties.AutomationId="InfoSections"
                     Spacing="12" />
+            </Grid>
+        </Border>
+
+        <!-- ===== Sync and subtitle look, toggled with G ===== -->
+        <Border
+            x:Name="AdjustPanel"
+            Width="340"
+            Margin="24,64,24,0"
+            Padding="16,12,16,16"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            AutomationProperties.Name="Sync and subtitle look"
+            Background="{ThemeResource VideoPanelBrush}"
+            CornerRadius="{StaticResource RadiusLarge}"
+            GotFocus="OnPanelGotFocus"
+            LostFocus="OnPanelLostFocus"
+            PointerEntered="OnControlsPointerEntered"
+            PointerExited="OnControlsPointerExited"
+            Visibility="Collapsed">
+            <StackPanel Spacing="12">
+                <Grid>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        AutomationProperties.HeadingLevel="Level2"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyStrongTextStyle}"
+                        Text="Sync and subtitle look" />
+                    <Button
+                        x:Name="AdjustCloseButton"
+                        HorizontalAlignment="Right"
+                        AutomationProperties.AutomationId="AdjustCloseButton"
+                        AutomationProperties.Name="Close sync and subtitle look"
+                        Click="OnAdjustCloseClick"
+                        Style="{StaticResource VideoIconButtonStyle}">
+                        <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE711;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                </Grid>
+
+                <TextBlock
+                    Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                    Style="{StaticResource CaptionTextStyle}"
+                    Text="Timing, remembered for this video" />
+                <Grid ColumnSpacing="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="64" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyTextStyle}"
+                        Text="Subtitles" />
+                    <Button
+                        x:Name="SubtitleEarlierButton"
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="SubtitleEarlierButton"
+                        Click="OnSubtitleEarlierClick"
+                        Style="{StaticResource VideoIconButtonStyle}">
+                        <FontIcon Glyph="&#xE738;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                    <TextBlock
+                        x:Name="SubtitleOffsetText"
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="SubtitleOffsetText"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        HorizontalTextAlignment="Center"
+                        Style="{StaticResource BodyStrongTextStyle}"
+                        Text="0 s" />
+                    <Button
+                        x:Name="SubtitleLaterButton"
+                        Grid.Column="3"
+                        AutomationProperties.AutomationId="SubtitleLaterButton"
+                        Click="OnSubtitleLaterClick"
+                        Style="{StaticResource VideoIconButtonStyle}">
+                        <FontIcon Glyph="&#xE710;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                    <Button
+                        x:Name="SubtitleResetButton"
+                        Grid.Column="4"
+                        AutomationProperties.AutomationId="SubtitleResetButton"
+                        AutomationProperties.Name="Reset subtitle timing"
+                        Click="OnSubtitleResetClick"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Reset subtitle timing">
+                        <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE777;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+
+                    <TextBlock
+                        Grid.Row="1"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyTextStyle}"
+                        Text="Sound" />
+                    <Button
+                        x:Name="AudioEarlierButton"
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="AudioEarlierButton"
+                        Click="OnAudioEarlierClick"
+                        Style="{StaticResource VideoIconButtonStyle}">
+                        <FontIcon Glyph="&#xE738;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                    <TextBlock
+                        x:Name="AudioOffsetText"
+                        Grid.Row="1"
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="AudioOffsetText"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        HorizontalTextAlignment="Center"
+                        Style="{StaticResource BodyStrongTextStyle}"
+                        Text="0 s" />
+                    <Button
+                        x:Name="AudioLaterButton"
+                        Grid.Row="1"
+                        Grid.Column="3"
+                        AutomationProperties.AutomationId="AudioLaterButton"
+                        Click="OnAudioLaterClick"
+                        Style="{StaticResource VideoIconButtonStyle}">
+                        <FontIcon Glyph="&#xE710;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                    <Button
+                        x:Name="AudioResetButton"
+                        Grid.Row="1"
+                        Grid.Column="4"
+                        AutomationProperties.AutomationId="AudioResetButton"
+                        AutomationProperties.Name="Reset sound timing"
+                        Click="OnAudioResetClick"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Reset sound timing">
+                        <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE777;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                </Grid>
+                <TextBlock
+                    x:Name="SyncHint"
+                    Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                    Style="{StaticResource CaptionTextStyle}" />
+
+                <TextBlock
+                    Margin="0,4,0,0"
+                    Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                    Style="{StaticResource CaptionTextStyle}"
+                    Text="Subtitle look, for every video" />
+                <Grid ColumnSpacing="8" RowSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="160" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyTextStyle}"
+                        Text="Size" />
+                    <ComboBox
+                        x:Name="SubtitleSizeBox"
+                        Grid.Column="1"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="PlayerSubtitleSizeBox"
+                        AutomationProperties.Name="Subtitle size"
+                        DropDownClosed="OnFlyoutClosed"
+                        DropDownOpened="OnFlyoutOpened"
+                        SelectionChanged="OnSubtitleLookChanged" />
+                    <TextBlock
+                        Grid.Row="1"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyTextStyle}"
+                        Text="Colour" />
+                    <ComboBox
+                        x:Name="SubtitleColorBox"
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="PlayerSubtitleColorBox"
+                        AutomationProperties.Name="Subtitle colour"
+                        DropDownClosed="OnFlyoutClosed"
+                        DropDownOpened="OnFlyoutOpened"
+                        SelectionChanged="OnSubtitleLookChanged" />
+                    <TextBlock
+                        Grid.Row="2"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyTextStyle}"
+                        Text="Background" />
+                    <ComboBox
+                        x:Name="SubtitleBackgroundBox"
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="PlayerSubtitleBackgroundBox"
+                        AutomationProperties.Name="Subtitle background"
+                        DropDownClosed="OnFlyoutClosed"
+                        DropDownOpened="OnFlyoutOpened"
+                        SelectionChanged="OnSubtitleLookChanged" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- ===== Keyboard shortcuts, toggled with ? or F1 ===== -->
+        <Border
+            x:Name="ShortcutsPanel"
+            MaxWidth="760"
+            Margin="48,72,48,96"
+            Padding="24,16,24,24"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            AutomationProperties.Name="Keyboard shortcuts"
+            Background="{ThemeResource VideoPanelBrush}"
+            CornerRadius="{StaticResource RadiusLarge}"
+            GotFocus="OnPanelGotFocus"
+            LostFocus="OnPanelLostFocus"
+            Visibility="Collapsed">
+            <Grid RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid>
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock
+                            AutomationProperties.HeadingLevel="Level2"
+                            Foreground="{ThemeResource TextOnVideoBrush}"
+                            Style="{StaticResource SectionHeaderTextStyle}"
+                            Text="Keyboard shortcuts" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Change any of these in Settings › Keyboard shortcuts." />
+                    </StackPanel>
+                    <Button
+                        x:Name="ShortcutsCloseButton"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        AutomationProperties.AutomationId="ShortcutsCloseButton"
+                        AutomationProperties.Name="Close keyboard shortcuts"
+                        Click="OnShortcutsCloseClick"
+                        Style="{StaticResource VideoIconButtonStyle}">
+                        <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE711;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                </Grid>
+                <ScrollViewer
+                    Grid.Row="1"
+                    HorizontalScrollMode="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <Grid x:Name="ShortcutsGrid" ColumnSpacing="40">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel x:Name="ShortcutsLeft" Spacing="16" />
+                        <StackPanel
+                            x:Name="ShortcutsRight"
+                            Grid.Column="1"
+                            Spacing="16" />
+                    </Grid>
+                </ScrollViewer>
             </Grid>
         </Border>
 

@@ -71,4 +71,19 @@ public class SyncAndStyleTests
         Assert.InRange(stepped, 0.001, 0.2);
         Assert.Equal(PlaybackStatus.Paused, engine.Status);
     }
+
+    [MediaFact]
+    public async Task A_file_can_open_paused_at_its_resume_point()
+    {
+        using var engine = await TestMedia.CreateEngineAsync();
+        await engine.OpenAsync(TestMedia.PathOf("h264-aac-timedtext.mp4"), TimeSpan.FromSeconds(3), startPaused: true);
+
+        Assert.Equal(PlaybackStatus.Paused, engine.Status);
+        Assert.InRange(engine.Position.TotalSeconds, 2.5, 3.5);
+        engine.Play();
+        Assert.True(await TestMedia.WaitAsync(() => engine.Status == PlaybackStatus.Playing));
+
+        await engine.OpenAsync(TestMedia.PathOf("vp9-opus.webm"), TimeSpan.Zero);
+        Assert.Equal(PlaybackStatus.Playing, engine.Status);
+    }
 }

@@ -25,9 +25,17 @@ public sealed record LibrarySnapshot(
     /// <summary>How many present items each category has.</summary>
     public int Count(MediaCategory category) => Groups.Count(g => g.Best.Category == category);
 
+    private Dictionary<string, CopyGroup>? _byPath;
+
     /// <summary>The group that contains <paramref name="path"/>, if any.</summary>
-    public CopyGroup? GroupOf(string path) =>
-        Groups.FirstOrDefault(g => g.All.Any(i => string.Equals(i.Path, path, StringComparison.OrdinalIgnoreCase)));
+    public CopyGroup? GroupOf(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        _byPath ??= Groups.SelectMany(g => g.All.Select(i => (i.Path, Group: g)))
+            .GroupBy(p => p.Path, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(p => p.Key, p => p.First().Group, StringComparer.OrdinalIgnoreCase);
+        return _byPath.TryGetValue(path, out var group) ? group : null;
+    }
 }
 
 /// <summary>
@@ -86,6 +94,10 @@ public sealed class LibraryCoordinator(
             return _worker;
         }
     }
+
+    /// <summary>The library folders, with their item counts and last scans.</summary>
+    public Task<IReadOnlyList<LibraryFolder>> GetFoldersAsync(CancellationToken cancellationToken = default) =>
+        store.GetFoldersAsync(cancellationToken);
 
     /// <summary>Adds a folder and starts scanning it.</summary>
     public async Task<LibraryFolder> AddFolderAsync(string path, LibraryFolderKind kind, CancellationToken cancellationToken = default)

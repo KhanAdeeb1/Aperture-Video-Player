@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Edit details. Primary task: correct what a library item is called. A guess Aperture
+    is unsure about is offered at the top to accept in one click; otherwise the fields
+    hold what the file name said. Only Aperture's records change, never the file.
+-->
+<ContentDialog
+    x:Class="Aperture.App.Views.EditDetailsDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Edit details"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnSaveClick"
+    PrimaryButtonText="Save"
+    SecondaryButtonClick="OnResetClick"
+    Style="{StaticResource DefaultContentDialogStyle}">
+
+    <StackPanel Width="400" Spacing="16">
+        <TextBlock
+            x:Name="PathText"
+            IsTextSelectionEnabled="True"
+            Style="{StaticResource CaptionTextStyle}"
+            TextWrapping="Wrap" />
+
+        <!-- An uncertain online match, offered rather than applied. -->
+        <Grid
+            x:Name="SuggestionPanel"
+            Padding="16,12,12,12"
+            Background="{ThemeResource SurfaceOverlayBrush}"
+            ColumnSpacing="12"
+            CornerRadius="{StaticResource RadiusMedium}"
+            Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center" Spacing="2">
+                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="Possible match, not applied" />
+                <TextBlock x:Name="SuggestionText" Style="{StaticResource BodyStrongTextStyle}" />
+            </StackPanel>
+            <Button
+                x:Name="AcceptSuggestionButton"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="AcceptSuggestionButton"
+                Click="OnAcceptSuggestionClick"
+                Content="Use this"
+                Style="{StaticResource ApertureButtonStyle}" />
+        </Grid>
+
+        <ComboBox
+            x:Name="CategoryBox"
+            HorizontalAlignment="Stretch"
+            AutomationProperties.AutomationId="CategoryBox"
+            Header="Kind"
+            SelectionChanged="OnCategoryChanged" />
+        <TextBox
+            x:Name="TitleBox"
+            AutomationProperties.AutomationId="TitleBox"
+            Header="Title"
+            TextChanged="OnTitleChanged" />
+        <Grid x:Name="NumbersRow" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <NumberBox
+                x:Name="YearBox"
+                AutomationProperties.AutomationId="YearBox"
+                Header="Year"
+                Maximum="2100"
+                Minimum="1880"
+                SpinButtonPlacementMode="Hidden"
+                ValidationMode="InvalidInputOverwritten" />
+            <NumberBox
+                x:Name="SeasonBox"
+                Grid.Column="1"
+                AutomationProperties.AutomationId="SeasonBox"
+                Header="Season"
+                Maximum="999"
+                Minimum="0"
+                SpinButtonPlacementMode="Hidden"
+                ValidationMode="InvalidInputOverwritten" />
+            <NumberBox
+                x:Name="EpisodeBox"
+                Grid.Column="2"
+                AutomationProperties.AutomationId="EpisodeBox"
+                Header="Episode"
+                Maximum="9999"
+                Minimum="0"
+                SpinButtonPlacementMode="Hidden"
+                ValidationMode="InvalidInputOverwritten" />
+        </Grid>
+        <TextBox
+            x:Name="EpisodeTitleBox"
+            AutomationProperties.AutomationId="EpisodeTitleBox"
+            Header="Episode title" />
+        <TextBlock
+            x:Name="SourceText"
+            Style="{StaticResource CaptionTextStyle}"
+            TextWrapping="Wrap" />
+    </StackPanel>
+</ContentDialog>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The single Aperture window. Home and Settings sit below a 48 px title bar that
-    carries the wordmark, search and the two global actions. The player fills the
+    The single Aperture window. Home, Library and Settings sit below a 48 px title bar
+    that carries the wordmark, search and the global actions. The player fills the
     whole window, and the title bar becomes part of its fading overlay.
 -->
 <Window
@@ -27,6 +27,7 @@
 
         <Grid x:Name="PageHost" Grid.Row="1">
             <views:HomeView x:Name="HomePage" />
+            <views:LibraryView x:Name="LibraryPage" Visibility="Collapsed" />
             <views:SettingsView x:Name="SettingsPage" Visibility="Collapsed" />
 
             <!-- Startup failure: the data folder or database could not be opened. -->
@@ -110,8 +111,8 @@
                     MaxWidth="{StaticResource SearchWidth}"
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="SearchBox"
-                    AutomationProperties.Name="Search played videos"
-                    PlaceholderText="Search played videos"
+                    AutomationProperties.Name="Search your library and played videos"
+                    PlaceholderText="Search"
                     QueryIcon="Find"
                     TextChanged="OnSearchTextChanged"
                     ToolTipService.ToolTip="Search (Ctrl+F)" />
@@ -123,6 +124,18 @@
                     VerticalAlignment="Center"
                     Orientation="Horizontal"
                     Spacing="4">
+                    <Button
+                        x:Name="LibraryButton"
+                        AutomationProperties.AutomationId="LibraryButton"
+                        AutomationProperties.Name="Library"
+                        Click="OnLibraryClick"
+                        Style="{StaticResource QuietButtonStyle}"
+                        ToolTipService.ToolTip="Library (Ctrl+L)">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE8F1;" Style="{StaticResource IconGlyphStyle}" />
+                            <TextBlock Text="Library" />
+                        </StackPanel>
+                    </Button>
                     <Button
                         x:Name="OpenButton"
                         AutomationProperties.AutomationId="OpenButton"

@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Settings. Primary task: change one preference and leave. A single reading-width
-    column of rows; every row changes real behaviour and saves immediately.
+    column of rows; every row changes real behaviour and saves immediately. Rarely
+    changed things (shortcuts, library folders, online details) live here rather than
+    on the player or library screens.
 -->
 <UserControl
     x:Class="Aperture.App.Views.SettingsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <ScrollViewer HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
+    <ScrollViewer x:Name="Scroller" HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
         <StackPanel
             MaxWidth="{StaticResource ReadingWidth}"
             Margin="24,8,24,48"
@@ -30,18 +32,19 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Resume where you left off" />
-                        <TextBlock Style="{StaticResource CaptionTextStyle}" Text="Start each video from the last position you watched." />
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="When a video was left part-way" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="What happens when you open something you didn’t finish." />
                     </StackPanel>
-                    <ToggleSwitch
-                        x:Name="ResumeToggle"
+                    <ComboBox
+                        x:Name="ResumeBox"
                         Grid.Column="1"
-                        MinWidth="0"
-                        AutomationProperties.AutomationId="ResumeToggle"
-                        AutomationProperties.Name="Resume where you left off"
-                        OffContent=""
-                        OnContent=""
-                        Toggled="OnSettingChanged" />
+                        MinWidth="220"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="ResumeBox"
+                        AutomationProperties.Name="When a video was left part-way"
+                        SelectionChanged="OnSettingChanged" />
                 </Grid>
                 <Grid Style="{StaticResource SettingRowStyle}">
                     <Grid.ColumnDefinitions>
@@ -50,7 +53,9 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Hide controls after" />
-                        <TextBlock Style="{StaticResource CaptionTextStyle}" Text="How long the player waits before hiding its controls and the pointer." />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="How long the player waits before hiding its controls and the pointer." />
                     </StackPanel>
                     <ComboBox
                         x:Name="HideDelayBox"
@@ -61,6 +66,227 @@
                         AutomationProperties.Name="Hide controls after"
                         SelectionChanged="OnSettingChanged" />
                 </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Keep voices natural at other speeds" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Keeps the pitch of speech the same when playing faster or slower." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="PitchToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="PitchToggle"
+                        AutomationProperties.Name="Keep voices natural at other speeds"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Keyboard shortcuts" />
+                        <TextBlock
+                            x:Name="ShortcutsCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="See every key the player uses, and change any of them." />
+                    </StackPanel>
+                    <Button
+                        x:Name="ShortcutsButton"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="ShortcutsButton"
+                        Click="OnShortcutsClick"
+                        Content="Customize…"
+                        Style="{StaticResource ApertureButtonStyle}" />
+                </Grid>
+            </StackPanel>
+
+            <!-- Subtitles -->
+            <TextBlock
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource SettingGroupHeaderTextStyle}"
+                Text="Subtitles" />
+            <StackPanel Spacing="2">
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Size" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Applies to text subtitles. Picture-based subtitles (DVD, Blu-ray) keep their own look." />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="SubtitleSizeBox"
+                        Grid.Column="1"
+                        MinWidth="160"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="SubtitleSizeBox"
+                        AutomationProperties.Name="Subtitle size"
+                        SelectionChanged="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Colour" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Yellow can be easier to read over bright pictures." />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="SubtitleColorBox"
+                        Grid.Column="1"
+                        MinWidth="160"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="SubtitleColorBox"
+                        AutomationProperties.Name="Subtitle colour"
+                        SelectionChanged="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Background" />
+                        <TextBlock
+                            x:Name="SubtitleBackgroundCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="A dark box behind each line helps over busy pictures." />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="SubtitleBackgroundBox"
+                        Grid.Column="1"
+                        MinWidth="160"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="SubtitleBackgroundBox"
+                        AutomationProperties.Name="Subtitle background"
+                        SelectionChanged="OnSettingChanged" />
+                </Grid>
+            </StackPanel>
+
+            <!-- Library -->
+            <TextBlock
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource SettingGroupHeaderTextStyle}"
+                Text="Library" />
+            <StackPanel Spacing="2">
+                <!-- One row per folder, built in code. -->
+                <StackPanel x:Name="FolderRows" Spacing="2" />
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Add a library folder" />
+                        <TextBlock
+                            x:Name="FolderCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Aperture reads only the folders you add, and never changes, moves or renames files in them." />
+                    </StackPanel>
+                    <Button
+                        x:Name="AddFolderButton"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="AddFolderButton"
+                        Click="OnAddFolderClick"
+                        Content="Add folder…"
+                        Style="{StaticResource ApertureButtonStyle}" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Look up artwork and details online" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Sends only titles, years and episode numbers to The Movie Database (TMDB). Personal videos and podcasts are never sent. Off by default; the library works fully offline." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="OnlineToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="OnlineToggle"
+                        AutomationProperties.Name="Look up artwork and details online"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnSettingChanged" />
+                </Grid>
+                <Grid x:Name="KeyRow" Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="TMDB API key" />
+                        <TextBlock
+                            x:Name="KeyCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="TMDB needs a free key from your own account. It’s kept in Windows Credential Manager, not in Aperture’s files." />
+                    </StackPanel>
+                    <HyperlinkButton
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Content="Get a key"
+                        NavigateUri="https://www.themoviedb.org/settings/api" />
+                    <Grid
+                        Grid.Row="1"
+                        Grid.ColumnSpan="2"
+                        Margin="0,12,0,0"
+                        ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <PasswordBox
+                            x:Name="KeyBox"
+                            AutomationProperties.AutomationId="KeyBox"
+                            AutomationProperties.Name="TMDB API key"
+                            PasswordChanged="OnKeyChanged"
+                            PlaceholderText="Paste your API key or read access token" />
+                        <Button
+                            x:Name="SaveKeyButton"
+                            Grid.Column="1"
+                            AutomationProperties.AutomationId="SaveKeyButton"
+                            Click="OnSaveKeyClick"
+                            Content="Save"
+                            IsEnabled="False"
+                            Style="{StaticResource ApertureButtonStyle}" />
+                        <Button
+                            x:Name="RemoveKeyButton"
+                            Grid.Column="2"
+                            AutomationProperties.AutomationId="RemoveKeyButton"
+                            Click="OnRemoveKeyClick"
+                            Content="Remove"
+                            Style="{StaticResource ApertureButtonStyle}" />
+                    </Grid>
+                </Grid>
+                <TextBlock
+                    Margin="16,8,16,0"
+                    Style="{StaticResource CaptionTextStyle}"
+                    Text="This product uses the TMDB API but is not endorsed or certified by TMDB." />
             </StackPanel>
 
             <!-- History -->
@@ -76,7 +302,9 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Remember played videos" />
-                        <TextBlock Style="{StaticResource CaptionTextStyle}" Text="Keep positions and show recent videos on Home. Turning this off stops recording; it doesn't delete anything." />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Keep positions and show recent videos on Home. Turning this off stops recording; it doesn't delete anything." />
                     </StackPanel>
                     <ToggleSwitch
                         x:Name="RememberToggle"
@@ -132,15 +360,11 @@
                 Text="About" />
             <StackPanel Spacing="2">
                 <Grid Style="{StaticResource SettingRowStyle}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock x:Name="VersionText" Style="{StaticResource BodyStrongTextStyle}" />
                         <TextBlock
                             Style="{StaticResource CaptionTextStyle}"
-                            Text="Preview build. Video is decoded by Windows Media Foundation until Aperture's own engine arrives." />
+                            Text="Preview build. Video and sound are played by libmpv, the engine of the mpv player." />
                     </StackPanel>
                 </Grid>
                 <Grid Style="{StaticResource SettingRowStyle}">

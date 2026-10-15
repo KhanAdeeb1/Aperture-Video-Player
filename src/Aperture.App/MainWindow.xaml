@@ -20,7 +20,8 @@
         Drop="OnDrop"
         PreviewKeyDown="OnPreviewKeyDown">
         <Grid.RowDefinitions>
-            <RowDefinition Height="{StaticResource TitleBarHeight}" />
+            <!-- Auto: the row follows the title bar, whose height is the TitleBarHeight token (32 in the mini-player). -->
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 

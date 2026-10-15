@@ -108,7 +108,13 @@ function Find-InApp($p, [string] $id, [int] $seconds = 5) {
     throw "UI element '$id' not found in any of Aperture's windows"
 }
 
-function Invoke-Element($element) { $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+function Invoke-Element($element) {
+    $pattern = $null
+    if (-not $element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref] $pattern)) {
+        throw "'$($element.Current.AutomationId)' ($($element.Current.ControlType.ProgrammaticName), '$($element.Current.Name)') cannot be invoked"
+    }
+    $pattern.Invoke()
+}
 function Get-Range($element) { $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).Current }
 function Set-Range($element, [double] $value) { $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).SetValue($value) }
 
@@ -840,18 +846,36 @@ Step 'YouTube' {
     Save-Shot $p '81-youtube-no-key'
 
     Open-YouTubeLink $p 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
-    if (-not (Wait-Log 'YouTube player: playing.' 60)) {
+    # YouTube decides whether it serves a video to a cloud machine. Either outcome proves the
+    # embed works end to end (page, IFrame API, events back to Aperture): it plays, or YouTube's
+    # player reports an error, which Aperture must explain in place of the player.
+    $deadline = (Get-Date).AddSeconds(60)
+    $outcome = $null
+    while (-not $outcome -and (Get-Date) -lt $deadline) {
+        $text = Get-LogText
+        if ($text.Contains('YouTube player: playing.')) { $outcome = 'playing' }
+        elseif ($text -match 'YouTube player error (\d+)') { $outcome = "error $($Matches[1])" }
+        else { Start-Sleep -Milliseconds 500 }
+    }
+    if (-not $outcome) {
         Save-Shot $p '82-youtube-player-failed'
-        throw 'the YouTube video did not start playing'
+        throw 'the YouTube player neither played nor reported an error'
     }
     Start-Sleep -Seconds 3
     Move-MouseAway
-    Save-Shot $p '82-youtube-player'
-    # Nothing Aperture draws may cover the embedded player while it plays.
-    foreach ($id in 'YouTubeProblemTitle', 'YouTubeNextCaption') {
-        $over = $null
-        try { $over = Find-Element $p $id 1 } catch { }
-        if ($over -and -not $over.Current.IsOffscreen) { throw "'$id' is showing over the player" }
+    if ($outcome -eq 'playing') {
+        Note 'YouTube: the video played in the embedded player'
+        Save-Shot $p '82-youtube-player'
+        # Nothing Aperture draws may cover the embedded player while it plays.
+        foreach ($id in 'YouTubeProblemTitle', 'YouTubeNextCaption') {
+            $over = $null
+            try { $over = Find-Element $p $id 1 } catch { }
+            if ($over -and -not $over.Current.IsOffscreen) { throw "'$id' is showing over the player" }
+        }
+    } else {
+        $refused = Find-Element $p 'YouTubeProblemTitle' 5
+        Note "YouTube: playback NOT confirmed; YouTube's player refused this machine ($outcome), shown as '$($refused.Current.Name)'"
+        Save-Shot $p '82-youtube-player-refused'
     }
     Invoke-Element (Find-Element $p 'YouTubeSaveButton')
     Start-Sleep -Seconds 1

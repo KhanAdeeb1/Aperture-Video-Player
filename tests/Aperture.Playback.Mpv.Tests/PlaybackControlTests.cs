@@ -61,7 +61,10 @@ public class PlaybackControlTests
     {
         using var engine = await TestMedia.CreateEngineAsync();
         await engine.OpenAsync(TestMedia.PathOf("multi-track.mkv"), TimeSpan.Zero);
-        Assert.True(await TestMedia.WaitAsync(() => engine.Tracks.Count == 5), $"tracks: {engine.Tracks.Count}");
+        // The track list can arrive before mpv has selected the default tracks in it.
+        Assert.True(
+            await TestMedia.WaitAsync(() => engine.Tracks.Count == 5 && engine.Tracks.Any(t => t.Kind == TrackKind.Audio && t.IsSelected)),
+            $"tracks: {engine.Tracks.Count}");
 
         var audio = engine.Tracks.Where(t => t.Kind == TrackKind.Audio).ToList();
         Assert.Equal(["eng", "jpn"], audio.Select(t => t.Language));

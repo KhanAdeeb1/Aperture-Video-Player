@@ -86,9 +86,11 @@ internal static class TestMedia
     {
         var tracks = engine.Tracks;
         string Count(TrackKind kind) => tracks.Count(t => t.Kind == kind).ToString(System.Globalization.CultureInfo.InvariantCulture);
-        return $"{engine.ReadProperty("file-format")}; video {engine.ReadProperty("video-format") ?? "none"} "
-            + $"{engine.ReadProperty("video-params/w")}x{engine.ReadProperty("video-params/h")} "
-            + $"(shown {engine.ReadProperty("video-params/dw")}x{engine.ReadProperty("video-params/dh")}); "
+        var video = engine.ReadProperty("video-format") is { } format
+            ? $"video {format} {engine.ReadProperty("video-params/w")}x{engine.ReadProperty("video-params/h")} "
+              + $"(shown {engine.ReadProperty("video-params/dw")}x{engine.ReadProperty("video-params/dh")})"
+            : "no video";
+        return $"{engine.ReadProperty("file-format")}; {video}; "
             + $"audio {engine.ReadProperty("audio-codec-name") ?? "none"} {engine.ReadProperty("audio-params/hr-channels")}; "
             + $"tracks v{Count(TrackKind.Video)} a{Count(TrackKind.Audio)} s{Count(TrackKind.Subtitle)}; "
             + $"duration {engine.Duration.TotalSeconds:0.0}s";

@@ -188,6 +188,7 @@ jobs:
         run: |
           Add-Type -AssemblyName System.Drawing
           $source = "$env:RUNNER_TEMP/visual-review"
+          if (-not (Get-ChildItem "$source/*.png" -ErrorAction SilentlyContinue)) { Write-Host "No screenshots to publish."; exit 0 }
           $target = "$env:RUNNER_TEMP/visual-review-branch"
           New-Item -ItemType Directory -Force $target | Out-Null
           $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }

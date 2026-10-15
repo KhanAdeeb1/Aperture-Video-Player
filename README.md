@@ -2,7 +2,7 @@
 
 A calm, carefully designed video player for Windows 11, built with C#, WinUI 3 and libmpv.
 
-**Status:** Milestone 1, design system and first impression. Home (Continue Watching, Recently Played, search), playback with auto-hiding controls, full screen, mini-player, settings, and loading, empty, error and unsupported-file states all run in the app. Playback uses Windows Media Foundation as an interim engine until libmpv is integrated.
+**Status:** Milestone 2, core playback engine. libmpv plays local files into a Direct3D 11 surface under the WinUI controls, with play, pause, seek, stop, volume, full screen, picture shape, audio and subtitle tracks, external subtitles, speed, resume and a playback-info panel. Missing, damaged and unsupported files get specific messages. Milestone 1's home, settings and mini-player are unchanged.
 
 ## Documents
 
@@ -28,7 +28,12 @@ On Linux or macOS only the platform-neutral projects build; see [Build and test]
 src/Aperture.App     WinUI 3 shell (Windows only)
 src/Aperture.Core    platform-neutral models, rules and contracts
 src/Aperture.Data    SQLite settings and playback history
+src/Aperture.Playback.Mpv  libmpv engine (P/Invoke, events, tracks, diagnostics)
+src/Aperture.Video   Direct3D 11 video presenter (ANGLE and software paths)
 tests/               unit tests
 tools/visual-review  test-clip generator and the screenshot driver used by CI
+tools/test-media     engine test-file generator
+tools/Get-Libmpv.ps1 fetches the pinned libmpv build
+third_party/         pins for native binaries (binaries themselves are not committed)
 docs/                design system, architecture, plan, reports
 ```

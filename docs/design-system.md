@@ -104,7 +104,8 @@ Screens switch instantly in M1. Nothing loops, floats or animates on its own.
 | Ctrl+, | Settings | Everywhere |
 | Esc | Leave full screen or mini-player; otherwise clear search, or leave Settings | Everywhere |
 | Alt+Left, Backspace | Back | Player, Settings |
-| Space, K | Play / pause | Player |
+| Space, K, media Play/Pause key | Play / pause | Player |
+| S, media Stop key | Stop: saves the position, closes the file and returns Home | Player |
 | Left / Right (Shift for 30 s) | Seek 5 s back / forward | Player |
 | J / L | Seek 10 s back / forward | Player |
 | Home / End | Start / end | Player |
@@ -112,6 +113,12 @@ Screens switch instantly in M1. Nothing loops, floats or animates on its own.
 | M | Mute | Player |
 | F, F11, double-click | Full screen | Player |
 | P | Mini-player | Player |
+| C | Next subtitle track (wraps through Off) | Player |
+| A | Next audio track | Player |
+| R | Next picture shape (Original, Fill window, Stretch, 16:9, 4:3, 2.39:1) | Player |
+| ] / [ | Faster / slower (0.25× to 2×) | Player |
+| \\ | Normal speed | Player |
+| I | Playback info panel | Player |
 
 Space always means play/pause in the player, even when a transport button has focus (Enter activates the focused button). Tab moves through the title bar and then the content in reading order. Focus is drawn with the Windows system focus visual, never a custom ring.
 

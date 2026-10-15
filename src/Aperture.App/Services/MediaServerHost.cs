@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Aperture.Core.Casting;
 using Aperture.Core.Server;
 using Aperture.Core.Storage;
 using Microsoft.Win32;
@@ -21,6 +22,9 @@ internal sealed class MediaServerHost(AppDataLocation data)
     // Only ever talks to 127.0.0.1, so no proxy.
     private static readonly HttpClient Http = new(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(3) };
 
+    // Looking for TVs takes a few seconds, and starting a cast waits for the TV to answer.
+    private static readonly HttpClient CastHttp = new(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(15) };
+
     private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(20);
 
     // The last server this app started; kept so its error output can still be read.
@@ -42,6 +46,34 @@ internal sealed class MediaServerHost(AppDataLocation data)
         ServerStateFile.Read(StateFile) is { } state
             ? await new ServerControlClient(Http).GetStatusAsync(state, cancellationToken).ConfigureAwait(false)
             : null;
+
+    /// <summary>TVs on the network, or null when the server isn't running. <paramref name="search"/> looks again (a few seconds).</summary>
+    public async Task<IReadOnlyList<CastRenderer>?> GetRenderersAsync(bool search, CancellationToken cancellationToken = default) =>
+        ServerStateFile.Read(StateFile) is { } state
+            ? await new ServerControlClient(CastHttp).GetRenderersAsync(state, search, cancellationToken).ConfigureAwait(false)
+            : null;
+
+    /// <summary>The current or last cast, or null when the server isn't running.</summary>
+    public async Task<CastStatus?> GetCastStatusAsync(CancellationToken cancellationToken = default) =>
+        ServerStateFile.Read(StateFile) is { } state
+            ? await new ServerControlClient(Http).GetCastStatusAsync(state, cancellationToken).ConfigureAwait(false)
+            : null;
+
+    /// <summary>Starts casting. Returns the first status, or why it couldn't start.</summary>
+    public async Task<(CastStatus? Status, string? Problem)> StartCastAsync(CastStartRequest request, CancellationToken cancellationToken = default) =>
+        ServerStateFile.Read(StateFile) is { } state
+            ? await new ServerControlClient(CastHttp).StartCastAsync(state, request, cancellationToken).ConfigureAwait(false)
+            : (null, "The media server isn't running.");
+
+    /// <summary>Play, pause or stop the cast. False when the server doesn't answer or nothing is casting.</summary>
+    public async Task<bool> CastCommandAsync(CastCommand command, CancellationToken cancellationToken = default) =>
+        ServerStateFile.Read(StateFile) is { } state
+            && await new ServerControlClient(CastHttp).CastCommandAsync(state, command, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>Moves the cast to <paramref name="position"/>.</summary>
+    public async Task<bool> CastSeekAsync(TimeSpan position, CancellationToken cancellationToken = default) =>
+        ServerStateFile.Read(StateFile) is { } state
+            && await new ServerControlClient(CastHttp).CastSeekAsync(state, position.TotalSeconds, cancellationToken).ConfigureAwait(false);
 
     /// <summary>Starts the server in the background and waits until it answers. Returns why it didn't start, or null.</summary>
     public async Task<string?> StartAsync(CancellationToken cancellationToken = default)

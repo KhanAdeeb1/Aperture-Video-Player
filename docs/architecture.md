@@ -252,3 +252,20 @@ Aperture.App ─ Settings ─────────►├─ SetupEndpoints /c
 
 User guide, laptop behaviour and the security design: [media-server.md](media-server.md).
 
+## 13. Playing on a TV (Milestone 8)
+
+```
+Aperture.App PlayerView ──/control/cast/* (loopback + token)──► Aperture.Server CastManager ─► CastSession (one at a time)
+   (remote: status every 1 s,                                     │  SsdpDiscovery (M-SEARCH from each home-network address)
+    play/pause/seek/stop)                                         │  UpnpRenderer (SOAP: AVTransport, ConnectionManager)
+                                                                  │  TvStreamPlanner + CastPositionTracker (Core)
+TV ◄──SOAP── CastSession            TV ──HTTP :8080 /cast/{token}/…──► CastEndpoints ─► file (Range) │ FFmpeg ─► MPEG-TS pipe
+```
+
+- **Protocol choice.** DLNA/UPnP AV (MediaRenderer:1) is the only TV protocol a Windows desktop app can drive without a vendor's permission or SDK: Google Cast needs a registered receiver and a sender SDK with no supported Windows desktop version, AirPlay is licensed to device makers, and Roku needs a published channel. Miracast is already in Windows (Windows+K). DLNA rendering is built into many TVs and players, so it is implemented, and the others are documented as alternatives in [casting.md](casting.md).
+- **The cast lives in the media server**, not the window: it keeps polling the TV, saving progress and serving the stream if Aperture closes, and the TV fetches from the address the server already listens on. The app is a remote over the loopback control address, as for Settings. One cast runs at a time.
+- **Core rules** (`Aperture.Core/Casting`): `TvStreamPlanner` (direct play, MPEG-TS remux, or H.264/AAC MPEG-TS conversion, from the TV's `GetProtocolInfo` sink list and FFprobe), `CastPositionTracker` (which reported positions are trusted enough to save), `DlnaTime`, and the status models. Platform-neutral and unit-tested.
+- **Server** (`Aperture.Server/Casting`): `SsdpDiscovery`, `UpnpDescription` (safe XML, address checks), `UpnpRenderer` (SOAP with DIDL-Lite metadata and DLNA headers, faults, size limits), `CastSession` (load, start detection, one fallback to conversion, resume seek, polling, Reconnecting after 3 missed answers and Disconnected after 90 s, takeover detection, saving), `CastManager` and `CastEndpoints`. `ConversionManager` gained MPEG-TS output to a pipe.
+- **Media addresses**: `/cast/{48 hex}/media.ext` or `/stream.ts` on the plain-HTTP setup port, valid only for the TV's IP and only while the cast runs. TVs can't use Aperture's own certificate authority, so HTTPS isn't an option for them; what is served is limited to the one file being cast.
+- **Progress.** While casting, the server's session is the only writer of `playback_history` for that file; `PlayerView` skips its own saves while it is a remote, and moves the engine to the final position when casting ends.
+

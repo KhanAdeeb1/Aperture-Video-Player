@@ -89,7 +89,8 @@ public enum StreamMode
 /// <param name="AudioOnly">The file has no picture (a podcast or music).</param>
 /// <param name="Progressive">Sent as one continuous fragmented MP4 instead of HLS, for browsers without HLS.
 /// It can't be seeked past what has arrived; starting elsewhere starts a new stream.</param>
-public sealed record StreamPlan(StreamMode Mode, string Reason, bool CopyVideo = false, bool CopyAudio = false, int? TargetHeight = null, int? VideoBitrateKbps = null, string? Warning = null, bool AudioOnly = false, bool Progressive = false)
+/// <param name="TransportStream">With <paramref name="Progressive"/>: one continuous MPEG-TS instead of an MP4, as TVs expect.</param>
+public sealed record StreamPlan(StreamMode Mode, string Reason, bool CopyVideo = false, bool CopyAudio = false, int? TargetHeight = null, int? VideoBitrateKbps = null, string? Warning = null, bool AudioOnly = false, bool Progressive = false, bool TransportStream = false)
 {
     /// <summary>Kbps of converted sound.</summary>
     public const int AudioBitrateKbps = 160;

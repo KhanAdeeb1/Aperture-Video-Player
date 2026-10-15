@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Aperture.Core.Server;
+using Aperture.Server.Casting;
 using Aperture.Server.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -10,9 +11,10 @@ using Microsoft.Extensions.Logging;
 namespace Aperture.Server.Hosting;
 
 /// <summary>
-/// The plain-HTTP port. It serves only the phone setup page and Aperture's certificate (both
-/// public), plus two control requests that answer this computer alone and need the token from
-/// <c>server.json</c>. No media or library data is ever sent over it.
+/// The plain-HTTP port. It serves the phone setup page and Aperture's certificate (both
+/// public), the control requests that answer this computer alone and need the token from
+/// <c>server.json</c>, and media for a TV that is casting (<see cref="CastEndpoints"/>: one
+/// random address per cast, answering only that TV). No library data is ever sent over it.
 /// </summary>
 internal static class SetupEndpoints
 {
@@ -25,6 +27,12 @@ internal static class SetupEndpoints
         if (path.StartsWith("/control/", StringComparison.Ordinal))
         {
             await HandleControlAsync(http, server, log, path);
+            return;
+        }
+
+        if (path.StartsWith("/cast/", StringComparison.Ordinal))
+        {
+            await CastEndpoints.HandleMediaAsync(http, server, log, path);
             return;
         }
 
@@ -89,6 +97,12 @@ internal static class SetupEndpoints
                 ConverterProblem: problem,
                 KeepingAwake: server.KeepingAwake());
             await http.Response.WriteAsJsonAsync(status, http.RequestAborted);
+            return;
+        }
+
+        if (path.StartsWith("/control/cast/", StringComparison.Ordinal))
+        {
+            await CastEndpoints.HandleControlAsync(http, server, path);
             return;
         }
 

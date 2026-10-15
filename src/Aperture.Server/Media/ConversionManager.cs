@@ -373,6 +373,13 @@ public sealed partial class ConversionManager : IAsyncDisposable
             args.AddRange(["-c:a", "aac", "-b:a", $"{StreamPlan.AudioBitrateKbps}k", "-ac", "2"]);
         }
 
+        if (directory is null && plan.TransportStream)
+        {
+            // TVs play MPEG-TS from the first byte and need no index.
+            args.AddRange(["-f", "mpegts", "pipe:1"]);
+            return args;
+        }
+
         if (directory is null)
         {
             // Fragments that start on keyframes and need no index at the end, so playback starts at once.

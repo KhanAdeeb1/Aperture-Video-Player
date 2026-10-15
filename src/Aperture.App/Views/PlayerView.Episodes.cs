@@ -530,6 +530,7 @@ public sealed partial class PlayerView
         if (visible)
         {
             SetAdjustVisible(false);
+            CastPanel.Visibility = Visibility.Collapsed;
             if (InfoPanel.Visibility == Visibility.Visible)
             {
                 SetInfoVisible(Root.ActualWidth >= 800);

@@ -112,6 +112,7 @@ public sealed partial class PlayerView : UserControl
         BuildAspectMenu();
         BuildLookChoices();
         InitializeEpisodes();
+        InitializeCasting();
 
         _overlay = new IdleOverlay(dispatcher) { IsPinned = IsOverlayPinned };
         _overlay.VisibilityChanged += OnOverlayVisibilityChanged;
@@ -154,7 +155,7 @@ public sealed partial class PlayerView : UserControl
     /// <summary>True while a side panel or the shortcut list is open (Esc closes it first).</summary>
     public bool HasOpenPanel =>
         AdjustPanel.Visibility == Visibility.Visible || ShortcutsPanel.Visibility == Visibility.Visible || InfoPanel.Visibility == Visibility.Visible
-        || SegmentsPanel.Visibility == Visibility.Visible;
+        || SegmentsPanel.Visibility == Visibility.Visible || CastPanel.Visibility == Visibility.Visible;
 
     /// <summary>True when keyboard focus is in one of the player's panels (its lists and buttons then get the keys).</summary>
     public bool IsFocusInPanel => _focusInPanel;
@@ -283,6 +284,7 @@ public sealed partial class PlayerView : UserControl
         }
 
         await LeaveCurrentFileAsync();
+        DetachFromCast();
 
         _path = path;
         Title = MediaFileTypes.TitleFromPath(path);
@@ -324,6 +326,7 @@ public sealed partial class PlayerView : UserControl
             return;
         }
 
+        _ = AttachToCastAsync(path);
         _engine.SubtitleDelay = choices.SubtitleDelay;
         _engine.AudioDelay = choices.AudioDelay;
         ShowOffsets();
@@ -352,6 +355,7 @@ public sealed partial class PlayerView : UserControl
     public async Task CloseAsync()
     {
         await LeaveCurrentFileAsync();
+        DetachFromCast(); // a cast carries on without this player
         _ticker.Stop();
         _resumeNoticeTimer.Stop();
         _singleTapTimer.Stop();
@@ -372,7 +376,8 @@ public sealed partial class PlayerView : UserControl
     /// <summary>Writes the current position to history now (also used when the window closes).</summary>
     public async Task SaveProgressAsync()
     {
-        if (_engine is null || _recorder is null || _path is null || _asking)
+        // While the file plays on a TV, the media server alone records where it is.
+        if (_engine is null || _recorder is null || _path is null || _asking || IsCasting)
         {
             return;
         }
@@ -395,6 +400,12 @@ public sealed partial class PlayerView : UserControl
             SetAdjustVisible(false);
             SetShortcutsVisible(false);
             SetSegmentsVisible(false);
+            SetCastPanelVisible(false);
+        }
+
+        if (IsCasting && _cast is { } cast)
+        {
+            ShowCast(cast);
         }
 
         FullscreenGlyph.Glyph = isFullscreen ? ExitFullscreenGlyph : EnterFullscreenGlyph;
@@ -443,6 +454,11 @@ public sealed partial class PlayerView : UserControl
         {
             SetShortcutsVisible(ShortcutsPanel.Visibility != Visibility.Visible);
             return true;
+        }
+
+        if (IsCasting)
+        {
+            return HandleCastCommand(command);
         }
 
         if (_engine is null || ErrorPanel.Visibility == Visibility.Visible)
@@ -574,6 +590,10 @@ public sealed partial class PlayerView : UserControl
         if (ShortcutsPanel.Visibility == Visibility.Visible)
         {
             SetShortcutsVisible(false);
+        }
+        else if (CastPanel.Visibility == Visibility.Visible)
+        {
+            SetCastPanelVisible(false);
         }
         else if (SegmentsPanel.Visibility == Visibility.Visible)
         {
@@ -1318,6 +1338,7 @@ public sealed partial class PlayerView : UserControl
             // Both live on the right; one at a time.
             SegmentsPanel.Visibility = Visibility.Collapsed;
             SegmentsMenuItem.IsChecked = false;
+            CastPanel.Visibility = Visibility.Collapsed;
             ShowOffsets();
             if (_services is not null)
             {
@@ -1549,7 +1570,8 @@ public sealed partial class PlayerView : UserControl
         || _menuOpen
         || _scrubbing
         || _asking
-        || ShortcutsPanel.Visibility == Visibility.Visible;
+        || ShortcutsPanel.Visibility == Visibility.Visible
+        || CastPanel.Visibility == Visibility.Visible;
 
     private void OnOverlayVisibilityChanged(object? sender, EventArgs e)
     {

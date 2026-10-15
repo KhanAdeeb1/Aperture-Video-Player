@@ -535,12 +535,21 @@ Step 'Library' {
     Note "Library after scanning again: $second cards"
     if ($second -ne $first) { throw "scanning again changed the item count ($first -> $second)" }
 
-    $filter = Find-Element $p 'FilterBox'
-    $filter.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('night')
+    # The title bar search filters the library grid as you type.
+    Send-Keys $p '^f'
+    Start-Sleep -Milliseconds 500
+    [System.Windows.Forms.SendKeys]::SendWait('night')
     Start-Sleep -Seconds 1
-    Save-Shot $p '64-library-filtered'
-    $filter.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('')
+    Move-MouseAway
+    Save-Shot $p '64-library-search'
+    $found = Get-CardCount $p
+    Note "Library search for 'night': $found cards"
+    if ($found -lt 1 -or $found -ge $first) { throw "searching the library for 'night' showed $found of $first cards" }
+    # Esc clears the search first and stays on the library.
+    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
     Start-Sleep -Seconds 1
+    $cleared = Get-CardCount $p
+    if ($cleared -ne $first) { throw "clearing the search left $cleared of $first cards" }
 
     Set-WindowSize $p 1024 700
     Save-Shot $p '65-library-1024'

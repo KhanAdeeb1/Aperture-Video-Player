@@ -11,7 +11,7 @@ internal static class MpvFailures
     {
         MpvError.UnknownFormat => new PlaybackFailure(PlaybackFailureKind.Damaged, "The file’s contents aren’t a format Aperture recognises."),
         MpvError.LoadingFailed => new PlaybackFailure(PlaybackFailureKind.Damaged, "The file could not be read as a video."),
-        MpvError.NothingToPlay => new PlaybackFailure(PlaybackFailureKind.Unsupported, "The file has no picture or sound Aperture can play."),
+        MpvError.NothingToPlay => new PlaybackFailure(PlaybackFailureKind.Unsupported, "It contains no video or audio stream, or none that the engine can decode."),
         MpvError.Unsupported => new PlaybackFailure(PlaybackFailureKind.Unsupported, "This kind of file isn’t supported."),
         MpvError.VideoOutputInitFailed => new PlaybackFailure(PlaybackFailureKind.Failed, "The video display could not start."),
         MpvError.AudioOutputInitFailed => new PlaybackFailure(PlaybackFailureKind.Failed, "No sound device could be opened."),

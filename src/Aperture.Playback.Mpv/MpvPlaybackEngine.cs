@@ -71,6 +71,13 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
     /// <summary>Describes the video renderer for diagnostics; set by the surface that renders this engine.</summary>
     public Func<string?> RendererDescription { get; set; } = static () => null;
 
+    private static readonly (string Name, string Value)[] LightweightScaling =
+    [
+        ("scale", "bilinear"), ("cscale", "bilinear"), ("dscale", "bilinear"), ("dither-depth", "no"),
+        ("correct-downscaling", "no"), ("linear-downscaling", "no"), ("sigmoid-upscaling", "no"),
+        ("deband", "no"), ("hdr-compute-peak", "no"),
+    ];
+
     public PlaybackStatus Status
     {
         get
@@ -382,6 +389,19 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
 
     public PlaybackDiagnostics GetDiagnostics() =>
         _loaded ? MpvDiagnostics.Build(_client.GetString, RendererDescription()) : PlaybackDiagnostics.Empty;
+
+    /// <summary>
+    /// Switches libmpv's GPU renderer to its cheapest scalers. Used when the only Direct3D
+    /// device is the CPU rasteriser (WARP), where the default high-quality scalers take enough
+    /// CPU to starve the interface.
+    /// </summary>
+    public void UseLightweightScaling()
+    {
+        foreach (var (name, value) in LightweightScaling)
+        {
+            _client.SetProperty(name, value);
+        }
+    }
 
     /// <summary>
     /// Raises subtitles by a fraction of the picture height (0 puts them back), so they stay

@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
     private readonly ThumbnailCache _thumbnails = new();
     private AppSettings _settings;
     private Screen _screen = Screen.Home;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _responsiveness;
     private Screen _screenBeforeSettings = Screen.Home;
     private bool _closingSaved;
     private Windows.Graphics.RectInt32? _windowedBounds;
@@ -57,6 +58,7 @@ public sealed partial class MainWindow : Window
         ConfigureWindow();
 
         (_engine, _presenter) = StartPlayback();
+        WatchResponsiveness();
         PlayerPage.FullscreenToggleRequested += (_, _) => ToggleFullscreen();
         PlayerPage.MiniPlayerToggleRequested += (_, _) => ToggleMiniPlayer();
         PlayerPage.OpenRequested += async (_, _) => await PickAndOpenAsync();
@@ -151,7 +153,7 @@ public sealed partial class MainWindow : Window
         var kind = string.Equals(Environment.GetEnvironmentVariable("APERTURE_VIDEO_RENDERER"), "software", StringComparison.OrdinalIgnoreCase)
             ? VideoRendererKind.Software
             : VideoRendererKind.Automatic;
-        var presenter = VideoPresenter.Start(engine, kind, flipY: true, AppLog.FromEngine);
+        var presenter = VideoPresenter.Start(engine, kind, flipY: false, AppLog.FromEngine);
         return (engine, presenter);
     }
 
@@ -547,6 +549,29 @@ public sealed partial class MainWindow : Window
         {
             e.Handled = PlayerPage.HandleKey(e.Key, control, shift);
         }
+    }
+
+    /// <summary>
+    /// Logs when the interface thread falls behind by more than half a second, so a slow
+    /// machine or a stalled call shows up in the log instead of only as a sluggish window.
+    /// </summary>
+    private void WatchResponsiveness()
+    {
+        var timer = _responsiveness = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(250);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var last = clock.Elapsed;
+        timer.Tick += (_, _) =>
+        {
+            var now = clock.Elapsed;
+            var late = now - last - timer.Interval;
+            last = now;
+            if (late > TimeSpan.FromMilliseconds(500))
+            {
+                AppLog.Warning($"The interface was unresponsive for {late.TotalMilliseconds:0} ms ({_screen}, video: {_presenter?.Description ?? "none"}).");
+            }
+        };
+        timer.Start();
     }
 
     private static bool IsDown(VirtualKey key) =>

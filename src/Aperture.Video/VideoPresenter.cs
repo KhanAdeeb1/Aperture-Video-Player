@@ -42,6 +42,7 @@ public sealed class VideoPresenter : IDisposable
     private int _width;
     private int _height;
     private string _description = "Starting";
+    private bool _lightweight;
 
     private VideoPresenter(MpvPlaybackEngine engine, VideoRendererKind kind, bool flipY, Action<string, string> log)
     {
@@ -49,7 +50,7 @@ public sealed class VideoPresenter : IDisposable
         _kind = kind;
         _flipY = flipY;
         _log = log;
-        _thread = new Thread(Run) { IsBackground = true, Name = "Aperture video", Priority = ThreadPriority.AboveNormal };
+        _thread = new Thread(Run) { IsBackground = true, Name = "Aperture video" };
     }
 
     /// <summary>
@@ -199,7 +200,7 @@ public sealed class VideoPresenter : IDisposable
         }
 
         _frames ??= SoftwareFrameSource.Create(_engine, _immediate!, adapter, () => _wake.Set());
-        _description = _frames.Description;
+        _description = _lightweight ? $"{_frames.Description}, fast scaling (no GPU)" : _frames.Description;
         _log("info", $"Video surface ready: {_description}");
         SwapChainChanged?.Invoke(_swapChain!.NativePointer);
     }
@@ -220,6 +221,23 @@ public sealed class VideoPresenter : IDisposable
 
     private string CreateDevice()
     {
+        var (adapter, software) = CreateDeviceCore();
+
+        // With a real GPU the render thread does little CPU work, and running it above normal
+        // keeps frames on time. On WARP every draw is rasterised on the CPU, so the interface
+        // must win instead, and libmpv is told to use cheap scalers.
+        Thread.CurrentThread.Priority = software ? ThreadPriority.BelowNormal : ThreadPriority.AboveNormal;
+        _lightweight = software;
+        if (software)
+        {
+            _engine.UseLightweightScaling();
+        }
+
+        return adapter;
+    }
+
+    private (string Adapter, bool Software) CreateDeviceCore()
+    {
         var flags = DeviceCreationFlags.BgraSupport;
         var result = D3D11.D3D11CreateDevice(IntPtr.Zero, DriverType.Hardware, flags, FeatureLevels, out var device, out var immediate);
         if (result.Failure)
@@ -237,7 +255,9 @@ public sealed class VideoPresenter : IDisposable
 
         using var dxgiDevice = _device.QueryInterface<IDXGIDevice>();
         using var adapter = dxgiDevice.GetAdapter();
-        return adapter.Description.Description.TrimEnd('\0').Trim();
+        using var adapter1 = adapter.QueryInterfaceOrNull<IDXGIAdapter1>();
+        var software = adapter1 is not null && (adapter1.Description1.Flags & AdapterFlags.Software) != 0;
+        return (adapter.Description.Description.TrimEnd('\0').Trim(), software);
     }
 
     private void CreateSwapChain(int width, int height)

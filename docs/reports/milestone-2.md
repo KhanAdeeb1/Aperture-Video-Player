@@ -2,7 +2,7 @@
 
 Date: 2026-10-15
 
-**Needs your approval:** the render path (section 1, "Render path"). It is the largest architectural decision in the project, it is implemented and working in CI, and it costs HDR. Details are in [architecture.md §4.2](../architecture.md).
+**Approved by adi on 2026-10-15:** the render path (section 1, "Render path"). It is the largest architectural decision in the project, it is implemented and working in CI, and it costs HDR. Details are in [architecture.md §4.2](../architecture.md).
 
 ## 1. Implemented
 
@@ -133,7 +133,7 @@ All Milestone 1 behaviour was re-run in the visual review against the new engine
 
 ## 7. Next step
 
-1. Approve the render path, or tell me to prototype mpv's own window (Path B) for comparison, which would bring HDR back at the cost of a second overlay window for the controls.
+1. ~~Approve the render path, or tell me to prototype mpv's own window (Path B) for comparison, which would bring HDR back at the cost of a second overlay window for the controls.~~ Approved on 2026-10-15.
 2. Run it on your own PC with a GPU and a few of your real files, and tell me what you see, especially smoothness and anything that fails to open.
 3. Decide the libmpv and FFmpeg license route before any public release.
 

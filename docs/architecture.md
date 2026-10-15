@@ -97,9 +97,9 @@ Tests mirror the modules: `tests/Aperture.<Module>.Tests`. Tests that need the n
 | `Windows.Media.Playback` (MediaPlayerElement) | Native WinUI control, simplest integration, no native redistribution | Codec coverage depends on installed Windows codecs (HEVC needs a Store extension, MKV/ASS subtitle support is limited); little control over rendering | Rejected for the core player |
 | Custom FFmpeg pipeline | Full control | Very large effort (A/V sync, subtitles, rendering) | Rejected |
 
-### 4.2 Rendering path (chosen in Milestone 2, awaiting adi's approval)
+### 4.2 Rendering path (chosen in Milestone 2, approved by adi on 2026-10-15)
 
-WinUI 3 gives no per-control HWND, and libmpv's render API offers only OpenGL and software output. Two paths were credible (see the Milestone 0 audit). **Milestone 2 implements Path A over ANGLE**, and this is flagged for adi's approval in the Milestone 2 report.
+WinUI 3 gives no per-control HWND, and libmpv's render API offers only OpenGL and software output. Two paths were credible (see the Milestone 0 audit). **Milestone 2 implements Path A over ANGLE**, and adi approved it on 2026-10-15 after the Milestone 2 report.
 
 ```
 libmpv render API (OpenGL ES 3)                     Aperture.Playback.Mpv / MpvRenderContext

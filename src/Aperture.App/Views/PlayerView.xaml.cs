@@ -1642,6 +1642,11 @@ public sealed partial class PlayerView : UserControl
     private void OnOverlayVisibilityChanged(object? sender, EventArgs e)
     {
         var visible = _overlay.IsVisible;
+        if (!visible && Environment.GetEnvironmentVariable("APERTURE_TRACE_CONTROLS") == "1")
+        {
+            AppLog.Info($"TRACE controls hidden: inside {_pointerInside}, on controls {_pointerOnControls}, last move {_traceLastMove}, keyboard {_keyboardInControls}, panel {_focusInPanel}, menu {_menuOpen}");
+        }
+
         Overlay.Opacity = visible ? 1 : 0;
         Overlay.IsHitTestVisible = visible;
         UpdateSubtitleLift();
@@ -1680,8 +1685,11 @@ public sealed partial class PlayerView : UserControl
         // when the pointer jumps (a tablet pen, a remote desktop, an automation tool) or when the
         // controls were hidden, and not hit-testable, as the pointer arrived over them.
         _pointerOnControls = IsOverControls(e);
+        _traceLastMove = $"{e.GetCurrentPoint(Root).Position} over controls {_pointerOnControls} panel {ControlsPanel.ActualWidth}x{ControlsPanel.ActualHeight} at {e.GetCurrentPoint(ControlsPanel).Position} from {e.OriginalSource?.GetType().Name}";
         _overlay.Poke();
     }
+
+    private string _traceLastMove = "none";
 
     private void OnRootPointerExited(object sender, PointerRoutedEventArgs e)
     {
@@ -1692,6 +1700,11 @@ public sealed partial class PlayerView : UserControl
         {
             _pointerOnControls = IsOverControls(e);
             return;
+        }
+
+        if (Environment.GetEnvironmentVariable("APERTURE_TRACE_CONTROLS") == "1")
+        {
+            AppLog.Info($"TRACE pointer left at {e.GetCurrentPoint(Root).Position} from {e.OriginalSource?.GetType().Name}");
         }
 
         _pointerInside = false;

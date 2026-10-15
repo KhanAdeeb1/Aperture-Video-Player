@@ -43,6 +43,7 @@ $MediaDir = [System.IO.Path]::GetFullPath($MediaDir)
 $dataDir = Join-Path $OutDir 'profile'
 New-Item -ItemType Directory -Force -Path $OutDir, $dataDir | Out-Null
 $env:APERTURE_DATA_DIR = $dataDir
+$env:APERTURE_TRACE_CONTROLS = '1'   # TEMPORARY: logs why the controls hide
 $failures = New-Object System.Collections.Generic.List[string]
 $notes = New-Object System.Collections.Generic.List[string]
 

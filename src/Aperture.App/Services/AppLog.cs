@@ -5,14 +5,46 @@ using Aperture.Core.Storage;
 namespace Aperture.App.Services;
 
 /// <summary>
-/// Minimal log (Milestones 1 and 2): one line per event in Logs\aperture.log and in the
-/// debugger output. File paths of media are not written. A structured, rolling logger
-/// replaces this in a later milestone (see docs/architecture.md).
+/// One line per event in Logs\aperture.log and in the debugger output. File paths of media
+/// are not written. When the log passes 2 MB it is moved to aperture.old.log and a new one
+/// started, so it never grows without limit (Milestone 9).
 /// </summary>
 internal static class AppLog
 {
+    private const long MaximumBytes = 2 * 1024 * 1024;
     private static readonly Lock Gate = new();
     private static string? _logFile;
+
+    /// <summary>The current log file, once known.</summary>
+    public static string? LogFile => _logFile;
+
+    /// <summary>The last <paramref name="count"/> lines of the log (empty when it can't be read).</summary>
+    public static IReadOnlyList<string> ReadTail(int count)
+    {
+        var file = _logFile;
+        if (file is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            lock (Gate)
+            {
+                using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                // The tail is in the last 64 KB; reading less keeps this quick for a full log.
+                stream.Seek(Math.Max(0, stream.Length - (64 * 1024)), SeekOrigin.Begin);
+                using var reader = new StreamReader(stream);
+                var lines = reader.ReadToEnd().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.TrimEnd('\r')).ToList();
+                return lines.Count > count ? lines[^count..] : lines;
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Debug.WriteLine($"Could not read the log file: {error.Message}");
+            return [];
+        }
+    }
 
     public static void Initialize(AppDataLocation location) =>
         _logFile = Path.Combine(location.LogsDirectory, "aperture.log");
@@ -76,6 +108,12 @@ internal static class AppLog
         {
             lock (Gate)
             {
+                var info = new FileInfo(file);
+                if (info.Exists && info.Length > MaximumBytes)
+                {
+                    File.Move(file, Path.ChangeExtension(file, ".old.log"), overwrite: true);
+                }
+
                 File.AppendAllText(file, line + Environment.NewLine);
             }
         }

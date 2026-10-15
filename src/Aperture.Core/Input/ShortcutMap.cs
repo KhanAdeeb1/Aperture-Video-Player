@@ -250,6 +250,11 @@ public sealed class ShortcutMap
             [PlayerCommand.SkipSegment] = [L('N')],
             [PlayerCommand.NextEpisode] = [L('N', KeyModifiers.Shift), K(MediaNext)],
             [PlayerCommand.PreviousEpisode] = [L('P', KeyModifiers.Shift), K(MediaPrevious)],
+            [PlayerCommand.AddBookmark] = [L('B')],
+            [PlayerCommand.Bookmarks] = [L('B', KeyModifiers.Shift)],
+            [PlayerCommand.LoopSection] = [L('L', KeyModifiers.Shift)],
+            [PlayerCommand.ClearDialogue] = [L('D')],
+            [PlayerCommand.EvenVolume] = [L('E')],
         };
     }
 }

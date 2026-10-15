@@ -47,6 +47,10 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
     private TimeSpan _subtitleDelay;
     private TimeSpan _audioDelay;
     private string? _boxStyle;
+    private LoopPoints _loop = LoopPoints.None;
+    private SoundOptions _sound = SoundOptions.Off;
+    private bool _soundUnavailable;
+    private Dictionary<string, SubtitleMatch> _foundSubtitles = [];
     private int _renderContexts;
     private bool _disposed;
 
@@ -225,8 +229,8 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
             new("keep-open", "yes"),
             new("vo", options.VideoOutput),
             new("hwdec", options.HardwareDecoding),
-            // Subtitle files named like the video ("Film.srt", "Film.en.srt") load automatically.
-            new("sub-auto", "exact"),
+            // Subtitle files are found by Aperture's own rules (SubtitleFinder) and passed with each file.
+            new("sub-auto", "no"),
             new("audio-file-auto", "no"),
             new("sub-font-size", "46"),
             new("sub-border-size", "2.5"),
@@ -303,9 +307,25 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
         SetStatus(PlaybackStatus.Opening);
         _log("info", $"Opening a {Path.GetExtension(path).ToLowerInvariant()} file");
 
-        // Timing offsets belong to one file; the player re-applies any remembered for this one.
+        // Timing offsets and loops belong to one file; the player re-applies what it remembers.
         SubtitleDelay = TimeSpan.Zero;
         AudioDelay = TimeSpan.Zero;
+        SetLoop(LoopPoints.None);
+
+        // Subtitle files beside the video or in its "Subs" folder load with it, so libmpv's
+        // own track choice (which prefers them) applies just as for subtitles inside the file.
+        var found = await Task.Run(() => SubtitleFinder.Find(path), cancellationToken).ConfigureAwait(true);
+        _foundSubtitles = found.ToDictionary(m => m.Path, StringComparer.OrdinalIgnoreCase);
+        _client.Command("change-list", "sub-files", "clr", string.Empty);
+        foreach (var match in found)
+        {
+            _client.Command("change-list", "sub-files", "append", match.Path);
+        }
+
+        if (found.Count > 0)
+        {
+            _log("info", $"Found {found.Count} subtitle file(s) for this video");
+        }
 
         // "start" is a global option: it applies to the next file loaded, so it is set
         // (or cleared) before every load.
@@ -456,6 +476,56 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
             _client.SetProperty("sub-outline-color", "#FF000000");
             _client.SetProperty("sub-back-color", "#00000000");
         }
+    }
+
+    /// <summary>The A–B loop in effect for the open file.</summary>
+    public LoopPoints Loop => _loop;
+
+    /// <summary>Repeats the stretch between the loop's start and end, or stops looping.</summary>
+    public void SetLoop(LoopPoints loop)
+    {
+        ArgumentNullException.ThrowIfNull(loop);
+        _loop = loop;
+        _client.SetProperty("ab-loop-a", loop.IsLooping ? Seconds(loop.Start!.Value) : "no");
+        _client.SetProperty("ab-loop-b", loop.IsLooping ? Seconds(loop.End!.Value) : "no");
+        if (loop.IsLooping && _loaded)
+        {
+            var position = Volatile.Read(ref _position);
+            if (position < loop.Start!.Value.TotalSeconds || position > loop.End!.Value.TotalSeconds)
+            {
+                Seek(loop.Start.Value);
+            }
+        }
+    }
+
+    /// <summary>The sound processing in effect.</summary>
+    public SoundOptions Sound => _sound;
+
+    /// <summary>
+    /// Turns clearer dialogue and even volume on or off. Returns null when applied, or a reason
+    /// when this libmpv build's FFmpeg lacks the filters; the sound then stays unprocessed.
+    /// </summary>
+    public string? SetSound(SoundOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (options == _sound && !_soundUnavailable)
+        {
+            return null;
+        }
+
+        var problem = _client.SetPropertyNow("af", options.FilterGraph());
+        if (problem is not null)
+        {
+            _log("warn", $"Sound options could not be applied: {problem}");
+            _client.SetPropertyNow("af", string.Empty);
+            _sound = SoundOptions.Off;
+            _soundUnavailable = !options.IsOff;
+            return "This copy of Aperture’s playback engine can’t process sound, so it plays as it is.";
+        }
+
+        _sound = options;
+        _soundUnavailable = false;
+        return null;
     }
 
     /// <summary>True when this libmpv build can draw a box behind subtitles.</summary>
@@ -654,7 +724,7 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
                 _rate = message.DoubleValue;
                 break;
             case TrackListId:
-                var tracks = MpvTrackList.Parse(message.StringValue);
+                var tracks = DescribeFoundSubtitles(MpvTrackList.Parse(message.StringValue));
                 lock (_gate)
                 {
                     if (_path is null && tracks.Count > 0)
@@ -669,6 +739,30 @@ public sealed class MpvPlaybackEngine : IPlaybackEngine
                 break;
         }
     }
+
+    /// <summary>
+    /// Gives subtitle files Aperture found the language, forced and SDH marks read from their
+    /// names ("2_English.srt"), and drops the file name libmpv uses as a title.
+    /// </summary>
+    private IReadOnlyList<MediaTrack> DescribeFoundSubtitles(IReadOnlyList<MediaTrack> tracks)
+    {
+        if (_foundSubtitles.Count == 0)
+        {
+            return tracks;
+        }
+
+        return [.. tracks.Select(track =>
+            track is { Kind: TrackKind.Subtitle, IsExternal: true, ExternalFileName: { } file } && _foundSubtitles.TryGetValue(file, out var match)
+                ? track with
+                {
+                    Language = match.Language ?? track.Language,
+                    Title = match.Title,
+                    IsForced = track.IsForced || match.IsForced,
+                }
+                : track)];
+    }
+
+    private static string Seconds(TimeSpan time) => time.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture);
 
     private void UpdateStatusFromFlags()
     {

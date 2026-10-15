@@ -12,6 +12,7 @@ namespace Aperture.Core.Playback;
 /// <param name="AudioDelay">Sound timing offset.</param>
 /// <param name="Aspect">Picture shape.</param>
 /// <param name="Speed">Playback speed.</param>
+/// <param name="Sound">Sound options chosen for this file.</param>
 public sealed record PlaybackPreferences(
     long? AudioTrackId = null,
     long? SubtitleTrackId = null,
@@ -19,7 +20,8 @@ public sealed record PlaybackPreferences(
     TimeSpan SubtitleDelay = default,
     TimeSpan AudioDelay = default,
     AspectMode? Aspect = null,
-    double? Speed = null)
+    double? Speed = null,
+    SoundOptions? Sound = null)
 {
     /// <summary>Nothing chosen.</summary>
     public static PlaybackPreferences None { get; } = new();
@@ -49,7 +51,8 @@ public static class RememberedChoices
     /// not remembered by number (their numbers change each time), and normal speed and the
     /// original picture shape are stored as "nothing chosen".
     /// </summary>
-    public static PlaybackPreferences Capture(IReadOnlyList<MediaTrack> tracks, TimeSpan subtitleDelay, TimeSpan audioDelay, AspectMode aspect, double speed)
+    /// <param name="sound">Sound options the user chose for this file, or null when they didn't.</param>
+    public static PlaybackPreferences Capture(IReadOnlyList<MediaTrack> tracks, TimeSpan subtitleDelay, TimeSpan audioDelay, AspectMode aspect, double speed, SoundOptions? sound = null)
     {
         ArgumentNullException.ThrowIfNull(tracks);
         var audio = tracks.Where(t => t.Kind == TrackKind.Audio).ToList();
@@ -62,7 +65,8 @@ public static class RememberedChoices
             SubtitleDelay: SyncOffset.Normalize(subtitleDelay),
             AudioDelay: SyncOffset.Normalize(audioDelay),
             Aspect: aspect == AspectMode.Original ? null : aspect,
-            Speed: Math.Abs(speed - PlaybackSpeed.Normal) < 0.001 ? null : speed);
+            Speed: Math.Abs(speed - PlaybackSpeed.Normal) < 0.001 ? null : speed,
+            Sound: sound);
     }
 
     /// <summary>

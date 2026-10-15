@@ -2,7 +2,9 @@
 
 Every dependency must appear here with its license and the reason it is needed before it is added to `Directory.Packages.props` or `third_party/`. "Checked" means the fact was looked up on the date shown; it is not legal advice.
 
-## In use (Milestones 2 to 8)
+## In use (Milestones 2 to 9)
+
+Milestone 9 added no packages. Seek previews use a second instance of the libmpv already shipped; clearer dialogue and even volume use FFmpeg filters inside that libmpv (`dialoguenhance`, `dynaudnorm`); the clipboard report uses Windows' own `DataTransfer` API. Local transcription was not built: it would need a speech model (for example whisper.cpp and a model file of 75 MB or more) and is waiting for a decision.
 
 Milestone 8 added no packages. Playing on a TV uses SSDP and SOAP over .NET's own `UdpClient`, `HttpClient` and `System.Xml`; the TV is reached with the DLNA/UPnP AV standards, which need no licence or key to control a renderer. Conversion for TVs uses the same user-installed FFmpeg as the media server. CI's visual review starts a stand-in TV written in Python with only its standard library (Python is preinstalled on GitHub's Windows runners; nothing is shipped).
 

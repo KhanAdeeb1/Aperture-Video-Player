@@ -96,6 +96,7 @@ public sealed partial class PlayerView
             // It lives on the right, like the other right-hand panels; one at a time.
             SetAdjustVisible(false);
             SetSegmentsVisible(false);
+            SetBookmarksVisible(false);
         }
 
         _overlay.Poke();

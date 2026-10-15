@@ -4,7 +4,8 @@
     timeline and transport fade in on pointer or keyboard activity and fade out after
     the idle delay from Settings while playing. Audio and subtitle choices share one
     button; speed, picture shape, sync and subtitle look, playback info, shortcuts and
-    file location live in the More menu, not on the bar, as does Play on a TV, which
+    file location live in the More menu, not on the bar, as do sound options, bookmarks,
+    A-B looping and Play on a TV, which
     turns this view into a remote for the TV until casting stops. Every action also has a key
     from the user's shortcut map. The video itself is a swap chain drawn by libmpv;
     everything here is ordinary XAML composed above it.
@@ -71,6 +72,9 @@
                         <Setter Target="ShortcutsPanel.Visibility" Value="Collapsed" />
                         <Setter Target="SegmentsPanel.Visibility" Value="Collapsed" />
                         <Setter Target="CastPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="BookmarksPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="LoopChip.Visibility" Value="Collapsed" />
+                        <Setter Target="TimelineMarks.Visibility" Value="Collapsed" />
                         <Setter Target="CastIcon.Visibility" Value="Collapsed" />
                         <Setter Target="CastTitle.Visibility" Value="Collapsed" />
                         <Setter Target="CastDelivery.Visibility" Value="Collapsed" />
@@ -198,17 +202,28 @@
                     </StackPanel>
                 </Border>
 
-                <Slider
-                    x:Name="Timeline"
-                    Grid.Row="1"
-                    AutomationProperties.AutomationId="Timeline"
-                    AutomationProperties.Name="Timeline"
-                    IsThumbToolTipEnabled="True"
-                    Maximum="1"
-                    Minimum="0"
-                    StepFrequency="0.5"
-                    ThumbToolTipValueConverter="{StaticResource SecondsToClock}"
-                    ValueChanged="OnTimelineValueChanged" />
+                <!--
+                    The timeline, with bookmarks as small ticks and an A-B loop as a band drawn
+                    just above its track. Pointing at it shows a preview picture (PreviewCard).
+                -->
+                <Grid x:Name="TimelineHost" Grid.Row="1">
+                    <Slider
+                        x:Name="Timeline"
+                        AutomationProperties.AutomationId="Timeline"
+                        AutomationProperties.Name="Timeline"
+                        IsThumbToolTipEnabled="False"
+                        Maximum="1"
+                        Minimum="0"
+                        PointerExited="OnTimelinePointerExited"
+                        PointerMoved="OnTimelinePointerMoved"
+                        SizeChanged="OnTimelineSizeChanged"
+                        StepFrequency="0.5"
+                        ValueChanged="OnTimelineValueChanged" />
+                    <Canvas
+                        x:Name="TimelineMarks"
+                        AutomationProperties.AccessibilityView="Raw"
+                        IsHitTestVisible="False" />
+                </Grid>
 
                 <Grid Grid.Row="2" ColumnSpacing="4">
                     <Grid.ColumnDefinitions>
@@ -271,6 +286,30 @@
                         Grid.Column="3"
                         AutomationProperties.AutomationId="TimeText"
                         Style="{StaticResource VideoTimeTextStyle}" />
+
+                    <!-- Only while an A-B loop is set: what repeats, and a click stops it. -->
+                    <Button
+                        x:Name="LoopChip"
+                        Grid.Column="4"
+                        Margin="12,0,0,0"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="LoopChip"
+                        Click="OnLoopChipClick"
+                        Foreground="{ThemeResource AccentBrush}"
+                        Style="{StaticResource QuietButtonStyle}"
+                        Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon
+                                FontSize="{StaticResource IconMedium}"
+                                Glyph="&#xE8EE;"
+                                Style="{StaticResource IconGlyphStyle}" />
+                            <TextBlock x:Name="LoopChipText" VerticalAlignment="Center" Style="{StaticResource CaptionTextStyle}" Foreground="{ThemeResource AccentBrush}" />
+                            <FontIcon
+                                FontSize="{StaticResource IconSmall}"
+                                Glyph="&#xE711;"
+                                Style="{StaticResource IconGlyphStyle}" />
+                        </StackPanel>
+                    </Button>
 
                     <!-- Only while a library episode with a next one is playing. -->
                     <Button
@@ -350,6 +389,50 @@
                                     <MenuFlyoutSubItem.Icon>
                                         <FontIcon Glyph="&#xE799;" />
                                     </MenuFlyoutSubItem.Icon>
+                                </MenuFlyoutSubItem>
+                                <MenuFlyoutSubItem x:Name="SoundMenu" AutomationProperties.AutomationId="SoundMenu" Text="Sound">
+                                    <MenuFlyoutSubItem.Icon>
+                                        <FontIcon Glyph="&#xE995;" />
+                                    </MenuFlyoutSubItem.Icon>
+                                    <ToggleMenuFlyoutItem
+                                        x:Name="ClearDialogueItem"
+                                        AutomationProperties.AutomationId="ClearDialogueItem"
+                                        Click="OnClearDialogueClick"
+                                        Text="Clearer dialogue" />
+                                    <ToggleMenuFlyoutItem
+                                        x:Name="EvenVolumeItem"
+                                        AutomationProperties.AutomationId="EvenVolumeItem"
+                                        Click="OnEvenVolumeClick"
+                                        Text="Even volume" />
+                                </MenuFlyoutSubItem>
+                                <ToggleMenuFlyoutItem
+                                    x:Name="BookmarksMenuItem"
+                                    AutomationProperties.AutomationId="BookmarksMenuItem"
+                                    Click="OnBookmarksMenuClick"
+                                    Text="Bookmarks and notes">
+                                    <ToggleMenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE8A4;" />
+                                    </ToggleMenuFlyoutItem.Icon>
+                                </ToggleMenuFlyoutItem>
+                                <MenuFlyoutSubItem x:Name="LoopMenu" AutomationProperties.AutomationId="LoopMenu" Text="Loop a section">
+                                    <MenuFlyoutSubItem.Icon>
+                                        <FontIcon Glyph="&#xE8EE;" />
+                                    </MenuFlyoutSubItem.Icon>
+                                    <MenuFlyoutItem
+                                        x:Name="LoopStartItem"
+                                        AutomationProperties.AutomationId="LoopStartItem"
+                                        Click="OnLoopStartClick"
+                                        Text="Start the loop here" />
+                                    <MenuFlyoutItem
+                                        x:Name="LoopEndItem"
+                                        AutomationProperties.AutomationId="LoopEndItem"
+                                        Click="OnLoopEndClick"
+                                        Text="End the loop here" />
+                                    <MenuFlyoutItem
+                                        x:Name="LoopStopItem"
+                                        AutomationProperties.AutomationId="LoopStopItem"
+                                        Click="OnLoopStopClick"
+                                        Text="Stop looping" />
                                 </MenuFlyoutSubItem>
                                 <ToggleMenuFlyoutItem
                                     x:Name="AdjustMenuItem"
@@ -456,6 +539,38 @@
                     </Button>
                 </Grid>
             </Grid>
+
+            <!--
+                Seek preview: a small picture of the video where the pointer is on the timeline,
+                with the time under it. Made in the background by a hidden second decoder.
+            -->
+            <StackPanel
+                x:Name="PreviewCard"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                AutomationProperties.AccessibilityView="Raw"
+                IsHitTestVisible="False"
+                Spacing="4"
+                Visibility="Collapsed">
+                <Border
+                    x:Name="PreviewFrame"
+                    Background="{ThemeResource SurfaceVideoBrush}"
+                    BorderBrush="{ThemeResource StrokeStrongBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource RadiusMedium}">
+                    <Image x:Name="PreviewImage" Stretch="Uniform" />
+                </Border>
+                <Border
+                    Padding="8,2,8,3"
+                    HorizontalAlignment="Center"
+                    Background="{ThemeResource VideoPanelBrush}"
+                    CornerRadius="{StaticResource RadiusSmall}">
+                    <TextBlock
+                        x:Name="PreviewTime"
+                        AutomationProperties.AutomationId="PreviewTime"
+                        Style="{StaticResource VideoTimeTextStyle}" />
+                </Border>
+            </StackPanel>
         </Grid>
 
         <!--
@@ -1204,6 +1319,72 @@
             </StackPanel>
         </Border>
 
+        <!--
+            ===== Bookmarks and notes, from More or Shift+B =====
+            Moments marked in this video, earliest first. The time jumps there; the note is
+            saved when focus leaves it. B marks the current moment without opening the panel.
+        -->
+        <Border
+            x:Name="BookmarksPanel"
+            Width="340"
+            MaxHeight="520"
+            Margin="24,64,24,0"
+            Padding="16,12,16,16"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            AutomationProperties.AutomationId="BookmarksPanel"
+            AutomationProperties.Name="Bookmarks and notes"
+            Background="{ThemeResource VideoPanelBrush}"
+            CornerRadius="{StaticResource RadiusLarge}"
+            GotFocus="OnPanelGotFocus"
+            LostFocus="OnPanelLostFocus"
+            PointerEntered="OnControlsPointerEntered"
+            PointerExited="OnControlsPointerExited"
+            Visibility="Collapsed">
+            <Grid RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        AutomationProperties.HeadingLevel="Level2"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyStrongTextStyle}"
+                        Text="Bookmarks and notes" />
+                    <Button
+                        x:Name="BookmarksCloseButton"
+                        HorizontalAlignment="Right"
+                        AutomationProperties.AutomationId="BookmarksCloseButton"
+                        AutomationProperties.Name="Close bookmarks"
+                        Click="OnBookmarksCloseClick"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Close">
+                        <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE711;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                </Grid>
+                <Button
+                    x:Name="AddBookmarkButton"
+                    Grid.Row="1"
+                    HorizontalAlignment="Stretch"
+                    AutomationProperties.AutomationId="AddBookmarkButton"
+                    Click="OnAddBookmarkClick"
+                    Content="Bookmark this moment"
+                    Style="{StaticResource ApertureButtonStyle}" />
+                <ScrollViewer
+                    Grid.Row="2"
+                    HorizontalScrollMode="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel
+                        x:Name="BookmarkList"
+                        AutomationProperties.AutomationId="BookmarkList"
+                        Spacing="4" />
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
         <!-- ===== Brief confirmation of a keyboard change (speed, tracks, picture shape) ===== -->
         <Border
             x:Name="Toast"
@@ -1299,6 +1480,13 @@
                         Content="Open another file"
                         Style="{StaticResource ApertureAccentButtonStyle}" />
                     <Button
+                        x:Name="ErrorRetryButton"
+                        AutomationProperties.AutomationId="ErrorRetryButton"
+                        Click="OnErrorRetryClick"
+                        Content="Try again"
+                        Style="{StaticResource ApertureButtonStyle}"
+                        Visibility="Collapsed" />
+                    <Button
                         x:Name="ErrorRemoveButton"
                         AutomationProperties.AutomationId="ErrorRemoveButton"
                         Click="OnErrorRemoveClick"
@@ -1306,6 +1494,16 @@
                         Style="{StaticResource ApertureButtonStyle}"
                         Visibility="Collapsed" />
                 </StackPanel>
+                <Button
+                    x:Name="ErrorCopyButton"
+                    Margin="0,12,0,0"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="ErrorCopyButton"
+                    Click="OnErrorCopyClick"
+                    Content="Copy details for a bug report"
+                    Foreground="{ThemeResource TextSecondaryBrush}"
+                    Style="{StaticResource QuietButtonStyle}"
+                    ToolTipService.ToolTip="Copies what went wrong and the end of Aperture’s log, with file and folder names removed. Nothing is sent anywhere." />
             </StackPanel>
         </Grid>
     </Grid>

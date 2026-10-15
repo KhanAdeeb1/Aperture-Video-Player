@@ -116,6 +116,7 @@ public sealed partial class PlayerView : UserControl
 
         _overlay = new IdleOverlay(dispatcher) { IsPinned = IsOverlayPinned };
         _overlay.VisibilityChanged += OnOverlayVisibilityChanged;
+        InitializeAdvanced(); // needs the overlay
 
         Timeline.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => _scrubbing = true), handledEventsToo: true);
         Timeline.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => _scrubbing = false), handledEventsToo: true);
@@ -155,7 +156,7 @@ public sealed partial class PlayerView : UserControl
     /// <summary>True while a side panel or the shortcut list is open (Esc closes it first).</summary>
     public bool HasOpenPanel =>
         AdjustPanel.Visibility == Visibility.Visible || ShortcutsPanel.Visibility == Visibility.Visible || InfoPanel.Visibility == Visibility.Visible
-        || SegmentsPanel.Visibility == Visibility.Visible || CastPanel.Visibility == Visibility.Visible;
+        || SegmentsPanel.Visibility == Visibility.Visible || CastPanel.Visibility == Visibility.Visible || BookmarksPanel.Visibility == Visibility.Visible;
 
     /// <summary>True when keyboard focus is in one of the player's panels (its lists and buttons then get the keys).</summary>
     public bool IsFocusInPanel => _focusInPanel;
@@ -212,6 +213,14 @@ public sealed partial class PlayerView : UserControl
         _engine.PreservePitch = settings.PreservePitch;
         _engine.ApplySubtitleStyle(settings.SubtitleStyle);
         ShowLook(settings.SubtitleStyle);
+        ApplyPreviewSetting(settings.SeekPreviews);
+
+        // New sound defaults reach a file unless it (or its show) has its own choice.
+        if (_path is not null && !_soundChosen && _fileSound is null && _showChoices.Sound is null)
+        {
+            _engine.SetSound(settings.SoundDefaults);
+            UpdateSoundMenu();
+        }
     }
 
     /// <summary>Updates tooltips, menu hints and the shortcut list after the keys changed.</summary>
@@ -238,6 +247,7 @@ public sealed partial class PlayerView : UserControl
         SyncHint.Text = earlier is not null && later is not null
             ? $"{earlier} and {later} move subtitles while watching; each press is 0.1 s."
             : "Each press moves by 0.1 s.";
+        ApplyAdvancedShortcutLabels(map);
         BuildShortcutList();
 
         void Describe(Button button, string name, PlayerCommand command)
@@ -265,10 +275,11 @@ public sealed partial class PlayerView : UserControl
 
     /// <summary>
     /// Opens a file. A part-watched file resumes, asks, or starts over as Settings say
-    /// (<paramref name="fromStart"/> always starts over); the file's remembered tracks,
-    /// timing offsets, picture shape and speed are restored.
+    /// (<paramref name="fromStart"/> always starts over; <paramref name="at"/> goes straight
+    /// there, for trying again after a failure); the file's remembered tracks, timing offsets,
+    /// picture shape, speed and sound are restored.
     /// </summary>
-    public async Task OpenAsync(string path, bool fromStart = false)
+    public async Task OpenAsync(string path, bool fromStart = false, TimeSpan? at = null, bool retrying = false)
     {
         if (_services is null)
         {
@@ -313,11 +324,17 @@ public sealed partial class PlayerView : UserControl
         await Safely(async () => { await _services.ItemState.SetWatchedAsync(path, null); return true; }, false);
 
         var savedPosition = fromStart || markedWatched ? TimeSpan.Zero : WatchProgress.ResumePosition(saved);
-        var ask = savedPosition > TimeSpan.Zero && settings.Resume == ResumeMode.Ask;
-        var resumeAt = settings.Resume == ResumeMode.StartOver ? TimeSpan.Zero : savedPosition;
+        var ask = at is null && savedPosition > TimeSpan.Zero && settings.Resume == ResumeMode.Ask;
+        var resumeAt = at ?? (settings.Resume == ResumeMode.StartOver ? TimeSpan.Zero : savedPosition);
+
+        var showSpeed = await PrepareAdvancedAsync(path, choices, retrying);
+        if (!string.Equals(_path, path, StringComparison.Ordinal))
+        {
+            return;
+        }
 
         ApplySettings(settings);
-        SetSpeed(choices.Speed ?? PlaybackSpeed.Normal, announce: false);
+        SetSpeed(choices.Speed ?? showSpeed ?? PlaybackSpeed.Normal, announce: false);
         SetAspect(choices.Aspect ?? AspectMode.Original, announce: false);
         _overlay.Poke();
         await _engine.OpenAsync(path, resumeAt, startPaused: ask);
@@ -332,6 +349,7 @@ public sealed partial class PlayerView : UserControl
         ShowOffsets();
         _pendingChoices = choices;
         ApplyRememberedTracks();
+        UpdateLoopUi();
 
         if (ask)
         {
@@ -370,6 +388,7 @@ public sealed partial class PlayerView : UserControl
         _cursor.Show();
         _engine?.Close();
         _path = null;
+        ResetAdvancedState();
         await SaveVolumeAsync();
     }
 
@@ -401,6 +420,8 @@ public sealed partial class PlayerView : UserControl
             SetShortcutsVisible(false);
             SetSegmentsVisible(false);
             SetCastPanelVisible(false);
+            SetBookmarksVisible(false);
+            HidePreview();
         }
 
         if (IsCasting && _cast is { } cast)
@@ -416,6 +437,7 @@ public sealed partial class PlayerView : UserControl
         _overlay.Poke();
         UpdateSubtitleLift();
         UpdateCueLift();
+        UpdateLoopUi();
     }
 
     private void SetWindowLabels()
@@ -436,7 +458,7 @@ public sealed partial class PlayerView : UserControl
     /// </summary>
     public bool HandleCommand(PlayerCommand command)
     {
-        if (_focusInPanel && command is not (PlayerCommand.Adjustments or PlayerCommand.Shortcuts or PlayerCommand.PlaybackInfo))
+        if (_focusInPanel && command is not (PlayerCommand.Adjustments or PlayerCommand.Shortcuts or PlayerCommand.PlaybackInfo or PlayerCommand.Bookmarks))
         {
             return false;
         }
@@ -575,6 +597,21 @@ public sealed partial class PlayerView : UserControl
             case PlayerCommand.PreviousEpisode:
                 PlayPrevious();
                 break;
+            case PlayerCommand.AddBookmark:
+                _ = AddBookmarkAsync();
+                break;
+            case PlayerCommand.Bookmarks:
+                SetBookmarksVisible(BookmarksPanel.Visibility != Visibility.Visible);
+                break;
+            case PlayerCommand.LoopSection:
+                CycleLoop();
+                break;
+            case PlayerCommand.ClearDialogue:
+                ToggleSound(clearDialogue: true);
+                break;
+            case PlayerCommand.EvenVolume:
+                ToggleSound(clearDialogue: false);
+                break;
             default:
                 return false;
         }
@@ -594,6 +631,10 @@ public sealed partial class PlayerView : UserControl
         else if (CastPanel.Visibility == Visibility.Visible)
         {
             SetCastPanelVisible(false);
+        }
+        else if (BookmarksPanel.Visibility == Visibility.Visible)
+        {
+            SetBookmarksVisible(false);
         }
         else if (SegmentsPanel.Visibility == Visibility.Visible)
         {
@@ -654,9 +695,16 @@ public sealed partial class PlayerView : UserControl
                 _ = SaveProgressAsync();
                 break;
             case PlaybackStatus.Failed:
+                HidePreview();
+                var failure = _engine.Failure ?? new PlaybackFailure(PlaybackFailureKind.Failed);
+                if (TryRecover(failure))
+                {
+                    break;
+                }
+
                 SetInfoVisible(false);
                 SetAdjustVisible(false);
-                ShowFailure(_engine.Failure ?? new PlaybackFailure(PlaybackFailureKind.Failed));
+                ShowFailure(failure);
                 break;
             case PlaybackStatus.Idle:
                 _ticker.Stop();
@@ -679,6 +727,7 @@ public sealed partial class PlayerView : UserControl
 
         UpdateTimelineNow();
         UpdateEpisodeCues();
+        UpdateAdvancedOnTick();
         if (_engine.Status == PlaybackStatus.Playing && _recorder is not null && _path is not null)
         {
             var path = _path;
@@ -714,6 +763,7 @@ public sealed partial class PlayerView : UserControl
         AudioOnlyPanel.Visibility = Visibility.Collapsed;
         var fileName = _path is null ? string.Empty : Path.GetFileName(_path);
         ErrorRemoveButton.Visibility = Visibility.Collapsed;
+        ErrorRetryButton.Visibility = _path is not null && CanRetry(failure, engineMissing) ? Visibility.Visible : Visibility.Collapsed;
         VisualStateManager.GoToState(this, "CriticalTone", false);
 
         switch (failure.Kind)
@@ -790,8 +840,9 @@ public sealed partial class PlayerView : UserControl
         if (_engine.Status is PlaybackStatus.Playing or PlaybackStatus.Paused or PlaybackStatus.Ended)
         {
             var path = _path;
-            var choices = RememberedChoices.Capture(_engine.Tracks, _engine.SubtitleDelay, _engine.AudioDelay, _engine.Aspect, _engine.Rate);
+            var choices = RememberedChoices.Capture(_engine.Tracks, _engine.SubtitleDelay, _engine.AudioDelay, _engine.Aspect, _engine.Rate, FileSoundToRemember());
             await Safely(async () => { await _services.ItemState.SavePreferencesAsync(path, choices); return true; }, false);
+            await SaveShowChoicesAsync();
         }
 
         _asking = false;
@@ -1083,7 +1134,7 @@ public sealed partial class PlayerView : UserControl
         }
 
         _pendingChoices = null;
-        var (audio, subtitle, subtitlesOff) = RememberedChoices.Tracks(choices, _engine.Tracks);
+        var (audio, subtitle, subtitlesOff) = WithShowTracks(choices, RememberedChoices.Tracks(choices, _engine.Tracks));
         if (audio is { } audioId)
         {
             _engine.SelectAudioTrack(audioId);
@@ -1339,6 +1390,8 @@ public sealed partial class PlayerView : UserControl
             SegmentsPanel.Visibility = Visibility.Collapsed;
             SegmentsMenuItem.IsChecked = false;
             CastPanel.Visibility = Visibility.Collapsed;
+            BookmarksPanel.Visibility = Visibility.Collapsed;
+            BookmarksMenuItem.IsChecked = false;
             ShowOffsets();
             if (_services is not null)
             {
@@ -1625,6 +1678,17 @@ public sealed partial class PlayerView : UserControl
 
     private void OnControlsPointerExited(object sender, PointerRoutedEventArgs e)
     {
+        // Leaving a part inside the controls (the timeline's thumb, a button) bubbles up here
+        // too; the pointer has only left the controls when it is outside the whole panel.
+        if (sender is FrameworkElement panel)
+        {
+            var point = e.GetCurrentPoint(panel).Position;
+            if (point.X >= 0 && point.Y >= 0 && point.X < panel.ActualWidth && point.Y < panel.ActualHeight)
+            {
+                return;
+            }
+        }
+
         _pointerOnControls = false;
         _overlay.Poke();
     }

@@ -64,7 +64,7 @@ APERTURE_DATA_DIR=/tmp/aperture-dev dotnet run --project src/Aperture.Server
 
 ## Engine tests
 
-`tests/Aperture.Playback.Mpv.Tests` runs the real libmpv engine headless (`vo=null`, `ao=null`) against generated files: twelve container/codec combinations, an anamorphic file, audio-only, a file cut in half, damaged, empty and truncated files, a subtitles-only file, a text file renamed `.mp4`, and a missing path. It also checks resume position, volume, mute, speed, picture shape, audio and subtitle switching, external and auto-loaded subtitles, and diagnostics.
+`tests/Aperture.Playback.Mpv.Tests` runs the real libmpv engine headless (`vo=null`, `ao=null`) against generated files: twelve container/codec combinations, an anamorphic file, audio-only, a file cut in half, damaged, empty and truncated files, a subtitles-only file, a text file renamed `.mp4`, and a missing path. It also checks resume position, volume, mute, speed, picture shape, audio and subtitle switching, external and auto-loaded subtitles, and diagnostics. From Milestone 9 it also checks seek previews (the right colour at the right time on a red-then-blue clip, the picture's shape for anamorphic video, none for sound-only or damaged files, a newer request replacing a waiting one), the A–B loop, clearer dialogue and even volume on a 5.1 file, and subtitles found in a release's `Subs/<video name>/` folder.
 
 ```bash
 bash tools/test-media/make-engine-test-media.sh /tmp/engine-media
@@ -94,6 +94,8 @@ powershell -File tools/visual-review/Capture-States.ps1 -Exe <path-to-Aperture.e
 ```
 
 The visual review's YouTube step needs the network (GitHub's runners have it). It plays a public, embeddable video from a pasted link without an API key, saves it, checks the unavailable-video explanation, and screenshots the consent screen and Settings › YouTube. Search, liked videos and playlists need a key or a sign-in and are covered by unit tests against recorded API responses, not by CI.
+
+The visual review's Milestone 9 steps point at the timeline and screenshot the seek preview, press B, Shift+B, Shift+L twice and D and check each notice, open More and Settings › Sound, and on a damaged file press "Copy details for a bug report" and check the clipboard holds a report with the media folder and file name removed.
 
 The visual review's casting step starts `tools/visual-review/fake-tv.py` (a stand-in DLNA TV, Python standard library only), opens a video, chooses More › Play on a TV, starts the media server from the panel, picks the TV, checks the remote reads "Playing on …" and "Paused on …", stops casting, and checks the stand-in TV really fetched the file over HTTP. It needs `python` on the path, as GitHub's Windows runners have.
 

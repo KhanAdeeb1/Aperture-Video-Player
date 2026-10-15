@@ -515,6 +515,93 @@ Step 'Sync and subtitle look panel, shortcuts panel' {
     Stop-Aperture $p
 }
 
+Step 'Seek preview, bookmarks, loop, sound' {
+    $p = Start-Aperture (Media 'Night Drive.mp4')
+    Start-Sleep -Seconds 3
+    Move-MouseToCenter $p 60
+    Start-Sleep -Milliseconds 150
+    Move-MouseToCenter $p
+    Start-Sleep -Milliseconds 600
+    # Point at 30 % of the timeline; the picture is made by the hidden preview decoder.
+    $box = (Find-Element $p 'Timeline').Current.BoundingRectangle
+    $y = [int]($box.Top + $box.Height / 2)
+    Move-Mouse ([int]($box.Left + $box.Width * 0.30) - 4) $y
+    Start-Sleep -Milliseconds 200
+    Move-Mouse ([int]($box.Left + $box.Width * 0.30)) $y
+    # Rest on the timeline past the idle delay: the controls (and the preview) must stay.
+    Start-Sleep -Seconds 4
+    Save-Shot $p '100-seek-preview'
+    try { Note "Seek preview time: $((Find-Element $p 'PreviewTime' 2).Current.Name)" } catch { Note 'Seek preview time text is not in the automation tree (the card is decorative); see 100-seek-preview.png' }
+
+    Move-MouseToCenter $p
+    Start-Sleep -Milliseconds 400
+    Send-Keys $p 'b'
+    Start-Sleep -Milliseconds 800
+    $toast = (Find-Element $p 'ToastText').Current.Name
+    Note "After B: $toast"
+    if (-not $toast.StartsWith('Bookmarked')) { throw "B did not bookmark (the notice reads '$toast')" }
+    Save-Shot $p '101-bookmark-toast'
+
+    Send-Keys $p '+b'
+    Start-Sleep -Seconds 1
+    Find-Element $p 'BookmarksPanel' | Out-Null
+    Find-Element $p 'AddBookmarkButton' | Out-Null
+    Save-Shot $p '102-bookmarks-panel'
+    Send-Keys $p '{ESC}'
+    Start-Sleep -Milliseconds 600
+
+    Send-Keys $p '+l'
+    Start-Sleep -Seconds 3
+    Send-Keys $p '+l'
+    Start-Sleep -Milliseconds 800
+    $chip = (Find-Element $p 'LoopChip').Current
+    Note "Loop chip after Shift+L twice: $((Find-Element $p 'ToastText').Current.Name)"
+    if ($chip.IsOffscreen) { throw 'the loop chip is not shown after setting a loop' }
+    Move-MouseToCenter $p 30
+    Start-Sleep -Milliseconds 400
+    Save-Shot $p '103-loop-chip'
+
+    Send-Keys $p 'd'
+    Start-Sleep -Milliseconds 800
+    $toast = (Find-Element $p 'ToastText').Current.Name
+    Note "After D: $toast"
+    if ($toast -ne 'Clearer dialogue on') { throw "D did not turn clearer dialogue on (the notice reads '$toast')" }
+    Save-Shot $p '104-clear-dialogue-toast'
+
+    Move-MouseToCenter $p 40
+    Start-Sleep -Milliseconds 400
+    Invoke-Element (Find-Element $p 'MoreButton')
+    Start-Sleep -Seconds 1
+    Save-Shot $p '105-more-menu-advanced'
+    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+    Start-Sleep -Milliseconds 500
+
+    Send-Keys $p '^,'
+    Start-Sleep -Seconds 1
+    $toggle = Find-Element $p 'ClearDialogueToggle'
+    $scroll = $null
+    if ($toggle.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref] $scroll)) { $scroll.ScrollIntoView() }
+    Start-Sleep -Milliseconds 600
+    Move-MouseAway
+    Save-Shot $p '106-settings-sound'
+    Stop-Aperture $p
+}
+
+Step 'Error panel: try again and copy a report' {
+    $p = Start-Aperture (Media 'Damaged Copy.mp4')
+    Start-Sleep -Seconds 6
+    Find-Element $p 'ErrorRetryButton' | Out-Null
+    Move-MouseAway
+    Save-Shot $p '107-error-retry-copy'
+    Invoke-Element (Find-Element $p 'ErrorCopyButton')
+    Start-Sleep -Milliseconds 800
+    $report = Get-Clipboard -Raw
+    if (-not $report -or -not $report.StartsWith('Aperture diagnostic report')) { throw "Copy details did not put a report on the clipboard: '$report'" }
+    if ($report.Contains($MediaDir) -or $report.Contains('Damaged Copy')) { throw 'the copied report still names the media folder or file' }
+    Note "Copied report: $((($report -split "`r?`n") | Select-Object -First 8) -join ' | ')"
+    Stop-Aperture $p
+}
+
 Step 'Shortcut editor' {
     $p = Start-Aperture
     Start-Sleep -Seconds 3

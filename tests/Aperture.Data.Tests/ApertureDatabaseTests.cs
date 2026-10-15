@@ -19,7 +19,7 @@ public class ApertureDatabaseTests
             tables.Add(reader.GetString(0));
         }
 
-        Assert.Equal(["episode_analysis", "item_state", "library_folders", "library_items", "media_segments", "playback_history", "segment_corrections", "series_preferences", "server_devices", "server_shared_folders", "settings", "youtube_videos"], tables);
+        Assert.Equal(["bookmarks", "episode_analysis", "item_state", "library_folders", "library_items", "media_segments", "playback_history", "segment_corrections", "series_preferences", "server_devices", "server_shared_folders", "settings", "show_choices", "youtube_videos"], tables);
     }
 
     [Fact]

@@ -39,9 +39,9 @@ Rules that hold the shape together:
 | Module | Target | Responsibility | Created in |
 |---|---|---|---|
 | `Aperture.App` | `net10.0-windows10.0.22621.0` | WinUI shell, screens, input, window management, video surface host | M0 (empty shell) |
-| `Aperture.Core` | `net10.0` | Domain records (`MediaItem`, `PlaybackPosition`, `TrackInfo`…), contracts (`IPlaybackEngine`, `ISettingsStore`, `IPlaybackHistory`…), `AppDataLocation` | M0 (`AppDataLocation` only) |
+| `Aperture.Core` | `net10.0` | Domain records and rules (`HistoryEntry`, `WatchProgress`, `HomeShelves`, `AppSettings`, `TimeFormat`), contracts (`IPlaybackEngine`, `ISettingsStore`, `IPlaybackHistory`), `AppDataLocation` | M0, extended in M1 |
 | `Aperture.Playback.Mpv` | `net10.0` (+ Windows-only render bridge) | Hand-written P/Invoke over the libmpv client API, a dedicated event thread, property observation, command dispatch, disposal | M1 |
-| `Aperture.Data` | `net10.0` | `Microsoft.Data.Sqlite` connection management, versioned SQL migrations, repositories | M4 |
+| `Aperture.Data` | `net10.0` | `Microsoft.Data.Sqlite` connection management, versioned SQL migrations, settings and playback-history repositories | M1 (brought forward from M4) |
 | `Aperture.Media` | `net10.0` | Media inspection (libmpv track list during playback; FFprobe for library scanning), folder scanning, artwork | M6 |
 | `Aperture.Server` | separate executable | Background media server for remote/cross-device playback | After first release |
 
@@ -122,13 +122,17 @@ Cost: the "airspace" problem. XAML cannot draw over a child HWND, so the auto-hi
 
 During playback, libmpv already reports duration, chapters and the track list, so the player needs no separate probe. FFprobe is deferred to library scanning (M6), run as a separate process with a timeout so a malformed file cannot hang or crash the app. Whether FFprobe is needed at all, versus a headless libmpv instance, is decided in M6.
 
+### 4.5 Interim engine (Milestone 1)
+
+adi's Milestone 1 is the design system, which needs real playback to judge the player screens honestly. Until the libmpv engine and its render path are decided, `Aperture.App/Playback/MediaFoundationEngine.cs` implements `IPlaybackEngine` with Windows Media Foundation (`MediaPlayer` shown in a `MediaPlayerElement`). It is real playback with real failures, limited to the codecs Windows has. Everything above it (views, history, progress recording) talks only to `IPlaybackEngine`, so the libmpv engine replaces one class. This is not the engine decision; that decision still comes back to adi with measurements.
+
 ## 5. Persistence
 
-SQLite through `Microsoft.Data.Sqlite`, one database at `AppDataLocation.DatabasePath` (`%LOCALAPPDATA%\Aperture\aperture.db`, overridable with `APERTURE_DATA_DIR`). Schema changes are numbered SQL migrations tracked with `PRAGMA user_version`, applied in a transaction at startup, with a backup copy taken before any migration runs. No ORM: the schema is small and plain SQL keeps it inspectable. Planned tables: `settings` (key/value), `playback_progress`, `recent_items`, later `library_items`, `bookmarks`.
+SQLite through `Microsoft.Data.Sqlite`, one database at `AppDataLocation.DatabasePath` (`%LOCALAPPDATA%\Aperture\aperture.db`, overridable with `APERTURE_DATA_DIR`). Schema changes are numbered SQL migrations tracked with `PRAGMA user_version`, applied in a transaction at startup, with a backup copy taken before any migration runs. No ORM: the schema is small and plain SQL keeps it inspectable. Milestone 1 created `settings` (key/value) and `playback_history` (path, title, position, duration, last played); later `library_items`, `bookmarks`.
 
 ## 6. Design system foundation
 
-`src/Aperture.App/Theme/Tokens.xaml` holds the initial tokens: charcoal surfaces (`#141517`, `#1C1D20`), three text opacities, a 4 px spacing scale, a four-step type ramp and two corner radii. Screens reference token keys only. The single accent colour is intentionally not chosen yet; it is proposed alongside real screenshots in M2 so it is judged on the actual player, not in isolation. Typography uses Segoe UI Variable (ships with Windows 11), which avoids a font dependency.
+See [design-system.md](design-system.md). Tokens are in `Theme/Tokens.xaml` (with high-contrast counterparts), component styles in `Theme/Styles.xaml`, motion in `Theme/Motion.cs`. Screens reference token keys only. The accent, Lamp `#F2A93B`, was chosen in Milestone 1 and reviewed on real screenshots of the player.
 
 ## 7. Packaging (proposed)
 

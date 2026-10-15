@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Input;
 
 namespace Aperture.App.Views;
 
-internal sealed partial class MediaCard : UserControl
+public sealed partial class MediaCard : UserControl
 {
     private MediaCardModel? _model;
 
@@ -16,12 +16,12 @@ internal sealed partial class MediaCard : UserControl
     }
 
     /// <summary>Raised when the card is clicked, tapped, or invoked with Enter or Space.</summary>
-    public event EventHandler<MediaCardModel>? Invoked;
+    internal event EventHandler<MediaCardModel>? Invoked;
 
     /// <summary>Raised when the user chooses "Remove from history".</summary>
-    public event EventHandler<MediaCardModel>? RemoveRequested;
+    internal event EventHandler<MediaCardModel>? RemoveRequested;
 
-    public MediaCardModel? Model
+    internal MediaCardModel? Model
     {
         get => _model;
         set

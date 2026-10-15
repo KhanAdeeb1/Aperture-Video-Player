@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 namespace Aperture.App.Views;
 
 /// <summary>The home screen: Continue Watching, Recently Played, search, and the first-launch state.</summary>
-internal sealed partial class HomeView : UserControl
+public sealed partial class HomeView : UserControl
 {
     private IPlaybackHistory? _history;
     private ThumbnailCache? _thumbnails;
@@ -28,7 +28,7 @@ internal sealed partial class HomeView : UserControl
     /// <summary>True when the first-launch state is showing.</summary>
     public bool IsEmpty => _loaded && _entries.Count == 0;
 
-    public void Initialize(IPlaybackHistory history, ThumbnailCache thumbnails)
+    internal void Initialize(IPlaybackHistory history, ThumbnailCache thumbnails)
     {
         _history = history;
         _thumbnails = thumbnails;
@@ -71,7 +71,7 @@ internal sealed partial class HomeView : UserControl
     {
         if (!_loaded)
         {
-            VisualStateManager.GoToState(this, "Loading", false);
+            VisualStateManager.GoToState(this, "HistoryLoading", false);
             return;
         }
 

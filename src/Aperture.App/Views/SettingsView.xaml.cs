@@ -8,7 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 namespace Aperture.App.Views;
 
 /// <summary>The settings screen. Changes are saved as they are made.</summary>
-internal sealed partial class SettingsView : UserControl
+public sealed partial class SettingsView : UserControl
 {
     private ISettingsStore? _store;
     private IPlaybackHistory? _history;

@@ -11,11 +11,13 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
+using DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue;
+using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 
 namespace Aperture.App.Views;
 
 /// <summary>The playback screen: video, auto-hiding controls, opening and error states.</summary>
-internal sealed partial class PlayerView : UserControl
+public sealed partial class PlayerView : UserControl
 {
     private const string PlayGlyph = "\uE768";
     private const string PauseGlyph = "\uE769";
@@ -100,7 +102,7 @@ internal sealed partial class PlayerView : UserControl
     /// <summary>True while the overlay (and the title bar with it) should be visible.</summary>
     public bool IsOverlayVisible => _overlay.IsVisible;
 
-    public void Initialize(MediaFoundationEngine engine, IPlaybackHistory history, Func<AppSettings> settings)
+    internal void Initialize(MediaFoundationEngine engine, IPlaybackHistory history, Func<AppSettings> settings)
     {
         _engine = engine;
         _history = history;

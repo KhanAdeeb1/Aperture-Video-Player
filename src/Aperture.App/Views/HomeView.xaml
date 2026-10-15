@@ -13,7 +13,7 @@
     <Grid x:Name="Root">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="ContentStates">
-                <VisualState x:Name="Loading" />
+                <VisualState x:Name="HistoryLoading" />
                 <VisualState x:Name="FirstLaunch">
                     <VisualState.Setters>
                         <Setter Target="FirstLaunchPanel.Visibility" Value="Visible" />

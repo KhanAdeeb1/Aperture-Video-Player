@@ -14,6 +14,7 @@
 ```powershell
 # Platform-neutral tests
 dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj
+dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj
 
 # Build the app (pick x64 or ARM64)
 dotnet build src/Aperture.App/Aperture.App.csproj -c Debug -p:Platform=x64
@@ -26,7 +27,7 @@ In Visual Studio, open `Aperture.sln`, set `Aperture.App` as the startup project
 
 The app runs unpackaged and self-contained, so no separate Windows App SDK runtime install is required.
 
-Milestone 0 expectation: a dark charcoal window titled "Aperture" with the word "Aperture" in small text in the centre. It has no controls yet.
+Milestone 1 expectation: the first-launch screen ("Open a video to begin"). Open a video with Ctrl+O, by dropping it on the window, or by passing its path: `Aperture.exe "D:\Videos\clip.mp4"`. Playback uses Windows Media Foundation for now, so files Windows itself cannot decode show the "format isn't supported yet" screen.
 
 ## On Linux or macOS
 
@@ -34,6 +35,7 @@ Only the platform-neutral projects build there:
 
 ```bash
 dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj
+dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj
 ```
 
 `dotnet build Aperture.sln` fails on non-Windows hosts because the WinUI XAML compiler (`XamlCompiler.exe`) is a Windows executable. This was confirmed in the Milestone 0 Linux environment.
@@ -42,10 +44,16 @@ dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj
 
 `.github/workflows/ci.yml` runs on every push and pull request:
 
-- **Core tests** on `ubuntu-latest` and `windows-latest`.
-- **Windows app build** on `windows-latest` for `x64` and `ARM64`.
+- **Core and data tests** on `ubuntu-latest` and `windows-latest`.
+- **Windows app build** on `windows-latest` for `x64` and `ARM64`, with a launch smoke test on x64.
+- **Visual review**: an Ubuntu job generates synthetic test clips with FFmpeg (`tools/visual-review/make-test-media.sh`); a Windows job installs Media Foundation, sets the display to 1920×1080, builds the app and runs `tools/visual-review/Capture-States.ps1`, which drives the real app through every Milestone 1 state with keyboard, mouse and UI Automation and saves a screenshot of each. The screenshots, notes (including measured playback progress) and the app log are uploaded as the `visual-review` artifact.
 
-CI builds the app but does not launch it; visual review uses a local run or screenshots.
+To run the visual review locally on Windows (it uses a throwaway data folder, never your own):
+
+```powershell
+# make the clips on any machine with FFmpeg and bash, then:
+powershell -File tools/visual-review/Capture-States.ps1 -Exe <path-to-Aperture.exe> -MediaDir <clips> -OutDir <output>
+```
 
 ## Data location
 

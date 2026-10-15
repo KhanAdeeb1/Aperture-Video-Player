@@ -22,7 +22,7 @@ namespace Aperture.App;
 /// window modes (windowed, full screen, mini-player), window-wide keyboard shortcuts,
 /// drag and drop, and the title bar.
 /// </summary>
-internal sealed partial class MainWindow : Window
+public sealed partial class MainWindow : Window
 {
     private const int DefaultWidth = 1280;
     private const int DefaultHeight = 800;
@@ -40,7 +40,7 @@ internal sealed partial class MainWindow : Window
     private bool _closingSaved;
     private Windows.Graphics.RectInt32? _windowedBounds;
 
-    public MainWindow(StartupResult startup)
+    internal MainWindow(StartupResult startup)
     {
         InitializeComponent();
         _services = startup.Services;

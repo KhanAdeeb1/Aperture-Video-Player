@@ -113,10 +113,10 @@ public sealed partial class PlayerView : UserControl
         BuildLookChoices();
         InitializeEpisodes();
         InitializeCasting();
-        InitializeAdvanced();
 
         _overlay = new IdleOverlay(dispatcher) { IsPinned = IsOverlayPinned };
         _overlay.VisibilityChanged += OnOverlayVisibilityChanged;
+        InitializeAdvanced(); // needs the overlay
 
         Timeline.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => _scrubbing = true), handledEventsToo: true);
         Timeline.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => _scrubbing = false), handledEventsToo: true);

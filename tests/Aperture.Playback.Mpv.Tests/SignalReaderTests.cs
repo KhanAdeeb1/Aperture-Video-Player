@@ -1,5 +1,6 @@
 using Aperture.Core.Series;
 using Aperture.Media.Analysis;
+using Aperture.Playback.Mpv.Interop;
 
 namespace Aperture.Playback.Mpv.Tests;
 
@@ -59,6 +60,42 @@ public sealed class SignalReaderTests : IDisposable
         var stretch = Assert.Single(dark);
         Assert.InRange(stretch.Start.TotalSeconds, 69.5, 70.5);
         Assert.InRange(stretch.End.TotalSeconds, 89.5, 90.5);
+    }
+
+    [MediaFact]
+    public async Task A_black_ending_is_found_while_a_player_is_open_in_the_same_process()
+    {
+        // FFmpeg logs to only one libmpv instance per process; in the app that is the player.
+        using var player = MpvClient.Create([new("vo", "null"), new("ao", "null"), new("idle", "yes"), new("config", "no")], "error", (_, _) => { });
+
+        var dark = await _reader.FindDarkStretchesAsync(TestMedia.PathOf("Harbour.S01E01.mp4"), TimeSpan.FromSeconds(50));
+
+        Assert.NotNull(dark);
+        Assert.InRange(Assert.Single(dark).Start.TotalSeconds, 69.5, 70.5);
+    }
+
+    [Fact]
+    public void Dark_frames_held_for_a_second_make_a_stretch_and_brief_ones_do_not()
+    {
+        const int size = 10;
+        static byte[] Frames(string pattern) => [.. pattern.SelectMany(c => Enumerable.Repeat(c == 'd' ? (byte)5 : (byte)120, size))];
+
+        // Four samples a second from 10 s: light, dark for 2 s, light, dark for 0.5 s (a cut), then dark to the end.
+        var found = MpvSignalReader.DarkStretches(Frames("llddddddddllddllddddd"), TimeSpan.FromSeconds(10), size, 4);
+
+        Assert.Equal(
+            [new TimeRange(TimeSpan.FromSeconds(10.5), TimeSpan.FromSeconds(12.5)), new TimeRange(TimeSpan.FromSeconds(14), TimeSpan.FromSeconds(15.25))],
+            found);
+    }
+
+    [Fact]
+    public void A_mostly_dark_frame_with_some_light_counts_as_dark_only_above_the_share()
+    {
+        byte[] frame = [.. Enumerable.Repeat((byte)0, 90), .. Enumerable.Repeat((byte)200, 10)];
+        byte[] lighter = [.. Enumerable.Repeat((byte)0, 80), .. Enumerable.Repeat((byte)200, 20)];
+
+        Assert.Single(MpvSignalReader.DarkStretches([.. Enumerable.Repeat(frame, 8).SelectMany(f => f)], TimeSpan.Zero, 100, 4));
+        Assert.Empty(MpvSignalReader.DarkStretches([.. Enumerable.Repeat(lighter, 8).SelectMany(f => f)], TimeSpan.Zero, 100, 4));
     }
 
     [MediaFact]

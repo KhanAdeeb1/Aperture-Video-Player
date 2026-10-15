@@ -24,6 +24,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Aperture.Playback.Mpv\Aperture.Playback.Mpv.csproj" />
+    <!-- Intro and credits detection run end to end on sound and pictures decoded by libmpv. -->
+    <ProjectReference Include="..\..\src\Aperture.Media\Aperture.Media.csproj" />
   </ItemGroup>
 
   <!-- On Windows, the pinned libmpv fetched by tools/Get-Libmpv.ps1 is copied next to the tests. -->

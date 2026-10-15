@@ -1,5 +1,6 @@
 using System.Globalization;
 using Aperture.Core.Playback;
+using Aperture.Core.Series;
 using Aperture.Core.Settings;
 using Microsoft.Data.Sqlite;
 
@@ -20,6 +21,12 @@ public sealed class SqliteSettingsStore(ApertureDatabase database) : ISettingsSt
     private const string VolumeKey = "playback.volume";
     private const string MutedKey = "playback.muted";
     private const string OnlineMetadataKey = "library.onlineMetadata";
+    private const string AutoplayKey = "episodes.autoplay";
+    private const string CountdownKey = "episodes.countdownSeconds";
+    private const string IntroSkipKey = "episodes.introSkip";
+    private const string RecapSkipKey = "episodes.recapSkip";
+    private const string SkipCreditsKey = "episodes.offerSkipCredits";
+    private const string FindSegmentsKey = "episodes.findSegments";
     private const string ShortcutPrefix = "shortcut.";
 
     public async Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default)
@@ -40,7 +47,13 @@ public sealed class SqliteSettingsStore(ApertureDatabase database) : ISettingsSt
                 ReadEnum(values, SubtitleBackgroundKey, (SubtitleBackground?)null) ?? defaults.SubtitleStyle.Background),
             Volume: ReadDouble(values, VolumeKey, defaults.Volume),
             Muted: ReadBool(values, MutedKey, defaults.Muted),
-            OnlineMetadata: ReadBool(values, OnlineMetadataKey, defaults.OnlineMetadata)).Normalized();
+            OnlineMetadata: ReadBool(values, OnlineMetadataKey, defaults.OnlineMetadata),
+            AutoplayNextEpisode: ReadBool(values, AutoplayKey, defaults.AutoplayNextEpisode),
+            NextEpisodeCountdownSeconds: ReadInt(values, CountdownKey, defaults.NextEpisodeCountdownSeconds),
+            IntroSkip: ReadEnum(values, IntroSkipKey, (SkipMode?)null) ?? defaults.IntroSkip,
+            RecapSkip: ReadEnum(values, RecapSkipKey, (SkipMode?)null) ?? defaults.RecapSkip,
+            OfferSkipCredits: ReadBool(values, SkipCreditsKey, defaults.OfferSkipCredits),
+            FindSegments: ReadBool(values, FindSegmentsKey, defaults.FindSegments)).Normalized();
     }
 
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
@@ -61,6 +74,12 @@ public sealed class SqliteSettingsStore(ApertureDatabase database) : ISettingsSt
                 (VolumeKey, settings.Volume.ToString("0.###", CultureInfo.InvariantCulture)),
                 (MutedKey, Bool(settings.Muted)),
                 (OnlineMetadataKey, Bool(settings.OnlineMetadata)),
+                (AutoplayKey, Bool(settings.AutoplayNextEpisode)),
+                (CountdownKey, settings.NextEpisodeCountdownSeconds.ToString(CultureInfo.InvariantCulture)),
+                (IntroSkipKey, settings.IntroSkip.ToString()),
+                (RecapSkipKey, settings.RecapSkip.ToString()),
+                (SkipCreditsKey, Bool(settings.OfferSkipCredits)),
+                (FindSegmentsKey, Bool(settings.FindSegments)),
             ],
             deletePrefix: null,
             cancellationToken).ConfigureAwait(false);

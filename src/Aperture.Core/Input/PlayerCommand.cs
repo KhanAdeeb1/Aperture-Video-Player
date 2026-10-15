@@ -33,6 +33,9 @@ public enum PlayerCommand
     PlaybackInfo,
     Adjustments,
     Shortcuts,
+    SkipSegment,
+    NextEpisode,
+    PreviousEpisode,
 }
 
 /// <summary>Groups commands for the shortcut list, in the order they are shown.</summary>
@@ -84,6 +87,9 @@ public static class PlayerCommands
         PlayerCommand.PlaybackInfo => "Playback info",
         PlayerCommand.Adjustments => "Sync and subtitle appearance",
         PlayerCommand.Shortcuts => "Keyboard shortcuts",
+        PlayerCommand.SkipSegment => "Skip intro, recap or credits",
+        PlayerCommand.NextEpisode => "Next episode",
+        PlayerCommand.PreviousEpisode => "Previous episode",
         _ => throw new ArgumentOutOfRangeException(nameof(command), command, null),
     };
 
@@ -91,7 +97,8 @@ public static class PlayerCommands
     public static CommandGroup Group(PlayerCommand command) => command switch
     {
         PlayerCommand.PlayPause or PlayerCommand.Stop or PlayerCommand.Faster or PlayerCommand.Slower
-            or PlayerCommand.NormalSpeed => CommandGroup.Playback,
+            or PlayerCommand.NormalSpeed or PlayerCommand.SkipSegment or PlayerCommand.NextEpisode
+            or PlayerCommand.PreviousEpisode => CommandGroup.Playback,
         PlayerCommand.SeekBack or PlayerCommand.SeekForward or PlayerCommand.SeekBackLong or PlayerCommand.SeekForwardLong
             or PlayerCommand.JumpBack or PlayerCommand.JumpForward or PlayerCommand.GoToStart or PlayerCommand.GoToEnd
             or PlayerCommand.FrameBack or PlayerCommand.FrameForward => CommandGroup.Seeking,

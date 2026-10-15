@@ -36,4 +36,26 @@ public class AppSettingsTests
         Assert.True(AppSettings.Default.PreservePitch);
         Assert.Equal(AppSettings.Default, AppSettings.Default.Normalized());
     }
+
+    [Fact]
+    public void Episode_defaults_offer_skipping_and_autoplay_with_a_ten_second_countdown()
+    {
+        var settings = AppSettings.Default;
+        Assert.True(settings.AutoplayNextEpisode);
+        Assert.Equal(10, settings.NextEpisodeCountdownSeconds);
+        Assert.Contains(settings.NextEpisodeCountdownSeconds, AppSettings.CountdownChoices);
+        Assert.Equal(Aperture.Core.Series.SkipMode.Button, settings.IntroSkip);
+        Assert.Equal(Aperture.Core.Series.SkipMode.Button, settings.RecapSkip);
+        Assert.True(settings.OfferSkipCredits);
+        Assert.True(settings.FindSegments);
+    }
+
+    [Fact]
+    public void Normalized_repairs_episode_settings()
+    {
+        var repaired = (AppSettings.Default with { NextEpisodeCountdownSeconds = 0, IntroSkip = (Aperture.Core.Series.SkipMode)9, RecapSkip = (Aperture.Core.Series.SkipMode)(-1) }).Normalized();
+        Assert.Equal(10, repaired.NextEpisodeCountdownSeconds);
+        Assert.Equal(Aperture.Core.Series.SkipMode.Button, repaired.IntroSkip);
+        Assert.Equal(Aperture.Core.Series.SkipMode.Button, repaired.RecapSkip);
+    }
 }

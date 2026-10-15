@@ -12,6 +12,7 @@ namespace Aperture.Core.Library;
 /// <param name="EpisodeTitle">The episode's own title, when the name carries one.</param>
 /// <param name="Date">A recording or air date in the name.</param>
 /// <param name="Confidence">How clear the name was.</param>
+/// <param name="EpisodeEnd">The last episode in a file that holds several ("S01E01E02"), or null.</param>
 public sealed record ParsedName(
     MediaCategory Category,
     string Title,
@@ -20,7 +21,8 @@ public sealed record ParsedName(
     int? Episode = null,
     string? EpisodeTitle = null,
     DateOnly? Date = null,
-    MatchConfidence Confidence = MatchConfidence.Uncertain);
+    MatchConfidence Confidence = MatchConfidence.Uncertain,
+    int? EpisodeEnd = null);
 
 /// <summary>
 /// Reads titles, years, seasons, episodes and dates from file and folder names, the way
@@ -122,7 +124,8 @@ public static partial class MediaNameParser
             match.Season ?? 1,
             match.Episode,
             NullIfEmpty(match.EpisodeTitle),
-            Confidence: confidence);
+            Confidence: confidence,
+            EpisodeEnd: match.EpisodeEnd);
     }
 
     private static ParsedName ParsePodcast(string name, List<string> folders, EpisodeMatch? match, DateOnly? date)
@@ -162,14 +165,24 @@ public static partial class MediaNameParser
 
     // ===== Episodes =====
 
-    private sealed record EpisodeMatch(string Show, int? Season, int Episode, string EpisodeTitle, bool Strong, MatchConfidence Confidence);
+    private sealed record EpisodeMatch(string Show, int? Season, int Episode, string EpisodeTitle, bool Strong, MatchConfidence Confidence)
+    {
+        /// <summary>The last episode of a multi-episode file, when it is later than <see cref="Episode"/>.</summary>
+        public int? EpisodeEnd { get; init; }
+    }
 
     private static EpisodeMatch? MatchEpisode(string name, List<string> folders)
     {
         var m = SeasonEpisodePattern().Match(name);
         if (m.Success)
         {
-            return new EpisodeMatch(Before(name, m), Int(m.Groups["s"]), Int(m.Groups["e"])!.Value, After(name, m), Strong: true, MatchConfidence.Certain);
+            var first = Int(m.Groups["e"])!.Value;
+            // "S01E01E02" and "S01E01-E02" hold two episodes; the next one to watch is E03.
+            var last = Int(m.Groups["e2"]);
+            return new EpisodeMatch(Before(name, m), Int(m.Groups["s"]), first, After(name, m), Strong: true, MatchConfidence.Certain)
+            {
+                EpisodeEnd = last is { } end && end > first && end - first < 10 ? end : null,
+            };
         }
 
         m = CrossPattern().Match(name);
@@ -347,7 +360,7 @@ public static partial class MediaNameParser
 
     // ===== Patterns =====
 
-    [GeneratedRegex(@"(?<![a-z0-9])s(?<s>\d{1,2})[ ._-]?e(?<e>\d{1,3})(?:[-_ ]?e\d{1,3})*(?![0-9])", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<![a-z0-9])s(?<s>\d{1,2})[ ._-]?e(?<e>\d{1,3})(?:(?:[-_ ]?e|-)(?<e2>\d{1,3}))*(?![0-9])", RegexOptions.IgnoreCase)]
     private static partial Regex SeasonEpisodePattern();
 
     [GeneratedRegex(@"(?<![a-z0-9])(?<s>\d{1,2})x(?<e>\d{2,3})(?![0-9])", RegexOptions.IgnoreCase)]

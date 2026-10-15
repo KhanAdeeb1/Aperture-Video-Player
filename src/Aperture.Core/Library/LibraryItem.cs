@@ -90,6 +90,9 @@ public sealed record LibraryItem
 
     public int? Episode { get; init; }
 
+    /// <summary>The last episode in a file that holds several ("S01E01E02"), or null for one episode.</summary>
+    public int? EpisodeEnd { get; init; }
+
     /// <summary>The episode's own title, when known.</summary>
     public string? EpisodeTitle { get; init; }
 
@@ -136,7 +139,7 @@ public sealed record LibraryItem
     public string? Subtitle => Category switch
     {
         MediaCategory.Episode when Season is { } s && Episode is { } e =>
-            EpisodeTitle is { Length: > 0 } name ? $"S{s} E{e} · {name}" : $"S{s} E{e}",
+            EpisodeTitle is { Length: > 0 } name ? $"{EpisodeLabel(s, e, EpisodeEnd)} · {name}" : EpisodeLabel(s, e, EpisodeEnd),
         MediaCategory.Episode when Episode is { } e => EpisodeTitle is { Length: > 0 } name ? $"E{e} · {name}" : $"Episode {e}",
         MediaCategory.Podcast when Episode is { } e => EpisodeTitle is { Length: > 0 } name ? $"Episode {e} · {name}" : $"Episode {e}",
         MediaCategory.Movie when Year is { } y => y.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -154,9 +157,17 @@ public sealed record LibraryItem
     public string? ContentKey => Category switch
     {
         MediaCategory.Movie when Confidence != MatchConfidence.Uncertain => $"movie|{Normalize(Title)}|{Year}",
-        MediaCategory.Episode when Season is { } s && Episode is { } e => $"episode|{Normalize(Title)}|{s}|{e}",
+        // The year keeps two shows of the same name apart ("Doctor Who (1963)" and "(2005)").
+        MediaCategory.Episode when Season is { } s && Episode is { } e => EpisodeEnd is { } end ? $"episode|{Normalize(Title)}|{Year}|{s}|{e}-{end}" : $"episode|{Normalize(Title)}|{Year}|{s}|{e}",
         _ => null,
     };
+
+    /// <summary>"S1 E3", or "S1 E3–4" for a file holding two episodes; "Special 2" for season 0.</summary>
+    public static string EpisodeLabel(int season, int episode, int? episodeEnd = null)
+    {
+        var number = episodeEnd is { } end && end > episode ? $"{episode}–{end}" : episode.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return season == 0 ? $"Special {number}" : $"S{season} E{number}";
+    }
 
     /// <summary>Lower-case letters and digits only, for comparing titles.</summary>
     public static string Normalize(string text)

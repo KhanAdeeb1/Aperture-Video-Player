@@ -1,4 +1,5 @@
 using Aperture.Core.Playback;
+using Aperture.Core.Series;
 
 namespace Aperture.Core.Settings;
 
@@ -11,6 +12,12 @@ namespace Aperture.Core.Settings;
 /// <param name="Volume">Last volume, 0 to 1, restored at the next launch.</param>
 /// <param name="Muted">Whether sound was muted when Aperture last played.</param>
 /// <param name="OnlineMetadata">Look up artwork and details for library items online (off unless chosen).</param>
+/// <param name="AutoplayNextEpisode">Play the next episode of a show when the countdown ends (each show can differ).</param>
+/// <param name="NextEpisodeCountdownSeconds">Length of the next-episode countdown.</param>
+/// <param name="IntroSkip">What to do with intros (each show can differ).</param>
+/// <param name="RecapSkip">What to do with recaps (each show can differ).</param>
+/// <param name="OfferSkipCredits">Show Skip credits during credits.</param>
+/// <param name="FindSegments">Compare episodes in the background to find intros, recaps and credits.</param>
 public sealed record AppSettings(
     ResumeMode Resume,
     bool RememberHistory,
@@ -19,10 +26,19 @@ public sealed record AppSettings(
     SubtitleStyle? Subtitles = null,
     double Volume = 1.0,
     bool Muted = false,
-    bool OnlineMetadata = false)
+    bool OnlineMetadata = false,
+    bool AutoplayNextEpisode = true,
+    int NextEpisodeCountdownSeconds = 10,
+    SkipMode IntroSkip = SkipMode.Button,
+    SkipMode RecapSkip = SkipMode.Button,
+    bool OfferSkipCredits = true,
+    bool FindSegments = true)
 {
     /// <summary>The choices offered for <see cref="ControlsHideDelaySeconds"/>.</summary>
     public static IReadOnlyList<int> HideDelayChoices { get; } = [2, 3, 5, 10];
+
+    /// <summary>The choices offered for <see cref="NextEpisodeCountdownSeconds"/>.</summary>
+    public static IReadOnlyList<int> CountdownChoices { get; } = [5, 10, 15, 20, 30];
 
     /// <summary>Defaults for a first launch.</summary>
     public static AppSettings Default { get; } = new(Resume: ResumeMode.Resume, RememberHistory: true, ControlsHideDelaySeconds: 3)
@@ -42,5 +58,8 @@ public sealed record AppSettings(
             ? style
             : SubtitleStyle.Default,
         Volume = double.IsFinite(Volume) ? Math.Clamp(Volume, 0, 1) : Default.Volume,
+        NextEpisodeCountdownSeconds = CountdownChoices.Contains(NextEpisodeCountdownSeconds) ? NextEpisodeCountdownSeconds : Default.NextEpisodeCountdownSeconds,
+        IntroSkip = Enum.IsDefined(IntroSkip) ? IntroSkip : Default.IntroSkip,
+        RecapSkip = Enum.IsDefined(RecapSkip) ? RecapSkip : Default.RecapSkip,
     };
 }

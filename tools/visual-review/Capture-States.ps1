@@ -597,6 +597,153 @@ Step 'Library' {
     Stop-Aperture $p
 }
 
+# Lines Aperture has written to its log so far (read while it runs).
+function Get-LogText {
+    $log = Join-Path $dataDir 'Logs\aperture.log'
+    if (-not (Test-Path $log)) { return '' }
+    $stream = New-Object System.IO.FileStream $log, 'Open', 'Read', 'ReadWrite, Delete'
+    try { return (New-Object System.IO.StreamReader $stream).ReadToEnd() } finally { $stream.Dispose() }
+}
+
+function Get-Title([string] $episode) { "Night Shift " + [char]0x00B7 + " $episode" }
+
+function Assert-Playing($p, [string] $title, [int] $seconds = 10) {
+    if (-not (Find-ByName $p $title $seconds)) { throw "expected '$title' to be playing" }
+}
+
+# The card is a Border, which UI Automation does not list; its Play now button stands for it.
+function Wait-NextUp($p, [int] $seconds = 15) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        $card = $null
+        try { $card = Find-Element $p 'NextUpPlayButton' 1 } catch { }
+        if ($card -and -not $card.Current.IsOffscreen) { return (Find-Element $p 'NextUpCaption' 2).Current.Name }
+        Start-Sleep -Milliseconds 300
+    }
+    throw 'the next-episode card did not appear'
+}
+
+function Test-NextUpShown($p) {
+    $card = $null
+    try { $card = Find-Element $p 'NextUpPlayButton' 1 } catch { }
+    return [bool]($card -and -not $card.Current.IsOffscreen)
+}
+
+$nightShift = 'Library\Shows\Night Shift\Season 1'
+$pilot = Get-Title ("S1 E1 " + [char]0x00B7 + " Pilot")
+$longHour = Get-Title ("S1 E2 " + [char]0x00B7 + " The Long Hour")
+$third = Get-Title 'S1 E3'
+
+Step 'Episodes' {
+    # The library from the previous step holds Night Shift; give Aperture time to compare
+    # its three episodes in the background (each run is logged as "Analysed <file>").
+    $p = Start-Aperture
+    $deadline = (Get-Date).AddSeconds(120)
+    while ((Get-Date) -lt $deadline) {
+        $done = ([regex]::Matches((Get-LogText), 'Analysed Night Shift S01E0[123]')).Count
+        if ($done -ge 3) { break }
+        Start-Sleep -Seconds 2
+    }
+    (Get-LogText) -split "`n" | Where-Object { $_ -like '*Analysed Night Shift*' } | ForEach-Object { Note "  $($_.Trim())" }
+    if ($done -lt 3) { throw "only $done of the 3 Night Shift episodes were analysed" }
+    Stop-Aperture $p
+
+    # Each episode has a cold open, then the same 20 s opening (E1 at 0:10), so the intro is
+    # found by comparison and offered as a button (two other episodes agree: not automatic).
+    $p = Start-Aperture (Media "$nightShift\Night Shift S01E01 Pilot.mp4")
+    Assert-Playing $p $pilot
+    $skip = Find-Element $p 'SkipButton' 25
+    Note "Skip button: '$($skip.Current.Name)'"
+    if ($skip.Current.Name -ne 'Skip intro') { throw "the skip button says '$($skip.Current.Name)'" }
+    Move-MouseAway
+    Save-Shot $p '70-skip-intro'
+    Invoke-Element $skip
+    Start-Sleep -Seconds 1
+    $timeline = Find-Element $p 'Timeline'
+    $at = (Get-Range $timeline).Value
+    Note "After Skip intro: $([math]::Round($at, 1)) s"
+    if ($at -lt 29 -or $at -gt 40) { throw "Skip intro went to $at s instead of the end of the opening (0:30)" }
+
+    # The credits (dark picture with the shared closing music) start at 2:00: the next
+    # episode card appears and counts down.
+    Set-Range $timeline 118
+    $caption = Wait-NextUp $p
+    Note "Next-up caption at the credits: '$caption'"
+    if ($caption -notlike 'Next episode in*') { throw "the credits showed '$caption' instead of a countdown" }
+    Move-MouseAway
+    Save-Shot $p '71-next-episode-countdown'
+
+    # Esc cancels it; the episode carries on.
+    Send-Keys $p '{ESC}'
+    Start-Sleep -Seconds 1
+    if (Test-NextUpShown $p) { throw 'Esc did not put the next-episode card away' }
+    Start-Sleep -Seconds 12
+    Assert-Playing $p $pilot 2
+    Save-Shot $p '72-countdown-cancelled'
+
+    # At the very end the card comes back, without counting down, and Play now moves on.
+    Set-Range $timeline 143
+    $caption = Wait-NextUp $p
+    Note "Next-up caption at the end after cancelling: '$caption'"
+    if ($caption -like 'Next episode in*') { throw 'the countdown started again after it was cancelled' }
+    Invoke-Element (Find-Element $p 'NextUpPlayButton')
+    Assert-Playing $p $longHour 15
+    Start-Sleep -Seconds 2
+    Move-MouseAway
+    Save-Shot $p '73-next-episode-playing'
+
+    # Letting the countdown run out plays the next episode by itself.
+    $timeline = Find-Element $p 'Timeline'
+    Set-Range $timeline 118
+    $caption = Wait-NextUp $p
+    if ($caption -notlike 'Next episode in*') { throw "E2's credits showed '$caption' instead of a countdown" }
+    Assert-Playing $p $third 25
+    Note 'Autoplay opened S1 E3 when the countdown ended'
+
+    # The correction panel, from More options.
+    Start-Sleep -Seconds 2
+    Move-MouseToCenter $p
+    Invoke-Element (Find-Element $p 'MoreButton')
+    Start-Sleep -Milliseconds 800
+    Invoke-Element (Find-Element $p 'SegmentsMenuItem' 3)
+    Start-Sleep -Seconds 1
+    Find-Element $p 'ConfirmSegmentButton' 3 | Out-Null
+    Move-MouseAway
+    Save-Shot $p '74-intro-credits-panel'
+    Stop-Aperture $p
+
+    # With autoplay turned off, the card offers the next episode but never counts down.
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Send-Keys $p '^,'
+    Start-Sleep -Seconds 1
+    $toggle = Find-Element $p 'AutoplayToggle'
+    $toggle.SetFocus()
+    $toggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+    Start-Sleep -Seconds 1
+    Move-MouseAway
+    Save-Shot $p '76-settings-episodes'
+    Send-Keys $p '%{LEFT}'
+    Start-Sleep -Seconds 2
+    Move-MouseAway
+    Save-Shot $p '77-home-up-next'
+    Stop-Aperture $p
+
+    $p = Start-Aperture (Media "$nightShift\Night Shift S01E01 Pilot.mp4")
+    Assert-Playing $p $pilot
+    Start-Sleep -Seconds 2
+    $timeline = Find-Element $p 'Timeline'
+    Set-Range $timeline 118
+    $caption = Wait-NextUp $p
+    Note "Next-up caption with autoplay off: '$caption'"
+    if ($caption -like 'Next episode in*') { throw 'the countdown ran with autoplay turned off' }
+    Start-Sleep -Seconds 15
+    Assert-Playing $p $pilot 2
+    Move-MouseAway
+    Save-Shot $p '75-autoplay-off'
+    Stop-Aperture $p
+}
+
 Step 'Resume choice' {
     $p = Start-Aperture
     Start-Sleep -Seconds 3

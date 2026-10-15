@@ -1,5 +1,6 @@
 using Aperture.App.Services;
 using Aperture.Core.Library;
+using Aperture.Core.Series;
 using Aperture.Media;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -125,16 +126,20 @@ public sealed partial class HomeView : UserControl
             return;
         }
 
-        var shelves = HomeShelves.From(_entries);
-        if (shelves.IsEmpty && _library.IsEmpty)
+        if (_entries.Count == 0 && _library.IsEmpty)
         {
             VisualStateManager.GoToState(this, "FirstLaunch", false);
             return;
         }
 
-        ContinueRepeater.ItemsSource = shelves.ContinueWatching.Select(e => Card(e, showProgress: true, now)).ToList();
-        RecentRepeater.ItemsSource = shelves.RecentlyPlayed.Select(e => Card(e, showProgress: false, now)).ToList();
-        ContinueSection.Visibility = shelves.ContinueWatching.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // A show appears once in Continue Watching: its part-watched episode, or the next one up.
+        var continuing = ContinueWatching.Build(_entries, SeriesCatalog.Build(_library.Groups), _library.WatchedOverrides);
+        var shown = continuing.Where(c => c.History is not null).Select(c => c.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var recent = _entries.Where(e => !shown.Contains(e.Path)).OrderByDescending(e => e.LastPlayedUtc).ToList();
+
+        ContinueRepeater.ItemsSource = continuing.Select(c => ContinueCard(c, now)).ToList();
+        RecentRepeater.ItemsSource = recent.Select(e => Card(e, showProgress: false, now)).ToList();
+        ContinueSection.Visibility = continuing.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         var anyRow = false;
         anyRow |= ShowRow(MediaCategory.Movie, MoviesSection, MoviesHeader, MoviesRepeater);
@@ -142,11 +147,27 @@ public sealed partial class HomeView : UserControl
         anyRow |= ShowRow(MediaCategory.Personal, PersonalSection, PersonalHeader, PersonalRepeater);
         anyRow |= ShowRow(MediaCategory.Podcast, PodcastsSection, PodcastsHeader, PodcastsRepeater);
 
-        RecentHeader.Visibility = shelves.RecentlyPlayed.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        RecentHeader.Visibility = recent.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         RecentRepeater.Visibility = RecentHeader.Visibility;
-        RecentHeader.Margin = shelves.ContinueWatching.Count > 0 || anyRow ? new Thickness(0, 40, 0, 16) : new Thickness(0, 0, 0, 16);
-        FirstRowWithoutGap(shelves.ContinueWatching.Count > 0);
+        RecentHeader.Margin = continuing.Count > 0 || anyRow ? new Thickness(0, 40, 0, 16) : new Thickness(0, 0, 0, 16);
+        FirstRowWithoutGap(continuing.Count > 0);
         VisualStateManager.GoToState(this, "Shelves", false);
+    }
+
+    /// <summary>A Continue Watching card: where the user stopped, or the next episode of a show.</summary>
+    private static MediaCardModel ContinueCard(ContinueItem item, DateTimeOffset now)
+    {
+        if (item.IsUpNext && item.Episode is { } next)
+        {
+            return MediaCardModel.UpNext(next, item.Path);
+        }
+
+        if (item.Episode is { } episode && item.History is { } played)
+        {
+            return MediaCardModel.Continuing(episode, played);
+        }
+
+        return MediaCardModel.FromHistory(item.History!, showProgress: true, now);
     }
 
     /// <summary>A played file, shown with its library details when it is in the library.</summary>

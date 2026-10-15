@@ -111,6 +111,7 @@ public sealed partial class PlayerView : UserControl
         BuildSpeedMenu();
         BuildAspectMenu();
         BuildLookChoices();
+        InitializeEpisodes();
 
         _overlay = new IdleOverlay(dispatcher) { IsPinned = IsOverlayPinned };
         _overlay.VisibilityChanged += OnOverlayVisibilityChanged;
@@ -152,7 +153,8 @@ public sealed partial class PlayerView : UserControl
 
     /// <summary>True while a side panel or the shortcut list is open (Esc closes it first).</summary>
     public bool HasOpenPanel =>
-        AdjustPanel.Visibility == Visibility.Visible || ShortcutsPanel.Visibility == Visibility.Visible || InfoPanel.Visibility == Visibility.Visible;
+        AdjustPanel.Visibility == Visibility.Visible || ShortcutsPanel.Visibility == Visibility.Visible || InfoPanel.Visibility == Visibility.Visible
+        || SegmentsPanel.Visibility == Visibility.Visible;
 
     /// <summary>True when keyboard focus is in one of the player's panels (its lists and buttons then get the keys).</summary>
     public bool IsFocusInPanel => _focusInPanel;
@@ -161,6 +163,7 @@ public sealed partial class PlayerView : UserControl
     {
         _services = services;
         _shortcuts = shortcuts;
+        WireEpisodes(services);
         _recorder = new ProgressRecorder(services.History, () => services.Settings.Current.RememberHistory, TimeProvider.System);
         _engineProblem = engineProblem;
         if (engine is null || presenter is null)
@@ -199,6 +202,7 @@ public sealed partial class PlayerView : UserControl
     {
         ArgumentNullException.ThrowIfNull(settings);
         _overlay.Delay = TimeSpan.FromSeconds(settings.ControlsHideDelaySeconds);
+        ApplyEpisodeSettings(settings);
         if (_engine is null)
         {
             return;
@@ -217,6 +221,7 @@ public sealed partial class PlayerView : UserControl
         AutomationName(PlayPauseButton, playing ? "Pause" : "Play", map.WithKey(playing ? "Pause" : "Play", PlayerCommand.PlayPause));
         UpdateVolumeGlyph();
         SetWindowLabels();
+        UpdateEpisodeButtons();
         InfoMenuItem.KeyboardAcceleratorTextOverride = map.Label(PlayerCommand.PlaybackInfo) ?? string.Empty;
         AdjustMenuItem.KeyboardAcceleratorTextOverride = map.Label(PlayerCommand.Adjustments) ?? string.Empty;
         ShortcutsMenuItem.KeyboardAcceleratorTextOverride = map.Label(PlayerCommand.Shortcuts) ?? string.Empty;
@@ -282,6 +287,15 @@ public sealed partial class PlayerView : UserControl
         _path = path;
         Title = MediaFileTypes.TitleFromPath(path);
         OpeningText.Text = Title;
+
+        // Episodes are named by show and number, and know their neighbours and segments.
+        await PrepareEpisodeAsync(path);
+        if (!string.Equals(_path, path, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        OpeningText.Text = Title;
         AudioOnlyText.Text = Title;
         AudioOnlyPanel.Visibility = Visibility.Collapsed;
         HideResumeNotice();
@@ -292,10 +306,11 @@ public sealed partial class PlayerView : UserControl
         var saved = await Safely(() => _services.History.FindAsync(path), null);
         var choices = await Safely(() => _services.ItemState.GetPreferencesAsync(path), PlaybackPreferences.None);
 
-        // Playing a file again lets history decide whether it's watched.
+        // Something marked watched starts again from the beginning; playing it lets history decide again.
+        var markedWatched = await WasMarkedWatchedAsync(path);
         await Safely(async () => { await _services.ItemState.SetWatchedAsync(path, null); return true; }, false);
 
-        var savedPosition = fromStart ? TimeSpan.Zero : WatchProgress.ResumePosition(saved);
+        var savedPosition = fromStart || markedWatched ? TimeSpan.Zero : WatchProgress.ResumePosition(saved);
         var ask = savedPosition > TimeSpan.Zero && settings.Resume == ResumeMode.Ask;
         var resumeAt = settings.Resume == ResumeMode.StartOver ? TimeSpan.Zero : savedPosition;
 
@@ -346,6 +361,7 @@ public sealed partial class PlayerView : UserControl
         SetInfoVisible(false);
         SetAdjustVisible(false);
         SetShortcutsVisible(false);
+        ResetEpisodeState();
         _overlay.Reset();
         _cursor.Show();
         _engine?.Close();
@@ -378,14 +394,17 @@ public sealed partial class PlayerView : UserControl
             SetInfoVisible(false);
             SetAdjustVisible(false);
             SetShortcutsVisible(false);
+            SetSegmentsVisible(false);
         }
 
         FullscreenGlyph.Glyph = isFullscreen ? ExitFullscreenGlyph : EnterFullscreenGlyph;
         MiniPlayerGlyph.Glyph = isMini ? ExitMiniGlyph : EnterMiniGlyph;
         _isFullscreen = isFullscreen;
         SetWindowLabels();
+        UpdateEpisodeButtons();
         _overlay.Poke();
         UpdateSubtitleLift();
+        UpdateCueLift();
     }
 
     private void SetWindowLabels()
@@ -410,6 +429,9 @@ public sealed partial class PlayerView : UserControl
         {
             return false;
         }
+
+        // Someone is here: episodes may play on by themselves again.
+        _autoplayRun = 0;
 
         if (command == PlayerCommand.Stop)
         {
@@ -524,6 +546,19 @@ public sealed partial class PlayerView : UserControl
             case PlayerCommand.Adjustments:
                 SetAdjustVisible(AdjustPanel.Visibility != Visibility.Visible);
                 break;
+            case PlayerCommand.SkipSegment:
+                if (!SkipOrUndo())
+                {
+                    ShowToast("Nothing to skip here", ToastDuration);
+                }
+
+                break;
+            case PlayerCommand.NextEpisode:
+                _ = PlayNextAsync(automatic: false);
+                break;
+            case PlayerCommand.PreviousEpisode:
+                PlayPrevious();
+                break;
             default:
                 return false;
         }
@@ -540,6 +575,10 @@ public sealed partial class PlayerView : UserControl
         {
             SetShortcutsVisible(false);
         }
+        else if (SegmentsPanel.Visibility == Visibility.Visible)
+        {
+            SetSegmentsVisible(false);
+        }
         else if (AdjustPanel.Visibility == Visibility.Visible)
         {
             SetAdjustVisible(false);
@@ -547,6 +586,11 @@ public sealed partial class PlayerView : UserControl
         else if (InfoPanel.Visibility == Visibility.Visible)
         {
             SetInfoVisible(false);
+        }
+        else if (NextUpCard.Visibility == Visibility.Visible)
+        {
+            // Esc cancels the next-episode countdown.
+            DismissNextUp();
         }
         else
         {
@@ -599,6 +643,7 @@ public sealed partial class PlayerView : UserControl
                 break;
         }
 
+        UpdateEpisodeCues();
         var playing = _engine.Status == PlaybackStatus.Playing;
         PlayPauseGlyph.Glyph = playing ? PauseGlyph : PlayGlyph;
         AutomationName(PlayPauseButton, playing ? "Pause" : "Play", _shortcuts().WithKey(playing ? "Pause" : "Play", PlayerCommand.PlayPause));
@@ -613,6 +658,7 @@ public sealed partial class PlayerView : UserControl
         }
 
         UpdateTimelineNow();
+        UpdateEpisodeCues();
         if (_engine.Status == PlaybackStatus.Playing && _recorder is not null && _path is not null)
         {
             var path = _path;
@@ -1269,6 +1315,9 @@ public sealed partial class PlayerView : UserControl
         AdjustMenuItem.IsChecked = visible;
         if (visible)
         {
+            // Both live on the right; one at a time.
+            SegmentsPanel.Visibility = Visibility.Collapsed;
+            SegmentsMenuItem.IsChecked = false;
             ShowOffsets();
             if (_services is not null)
             {
@@ -1508,6 +1557,7 @@ public sealed partial class PlayerView : UserControl
         Overlay.Opacity = visible ? 1 : 0;
         Overlay.IsHitTestVisible = visible;
         UpdateSubtitleLift();
+        UpdateCueLift();
         if (visible || !_pointerInside)
         {
             _cursor.Show();
@@ -1527,7 +1577,11 @@ public sealed partial class PlayerView : UserControl
         _engine?.LiftSubtitles(lift);
     }
 
-    private void OnRootSizeChanged(object sender, SizeChangedEventArgs e) => UpdateSubtitleLift();
+    private void OnRootSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateSubtitleLift();
+        UpdateCueLift();
+    }
 
     private void OnRootPointerMoved(object sender, PointerRoutedEventArgs e)
     {
@@ -1585,6 +1639,8 @@ public sealed partial class PlayerView : UserControl
         {
             return;
         }
+
+        _autoplayRun = 0;
 
         // A click on the video while a panel has focus gives the keys back to the player.
         if (_focusInPanel)

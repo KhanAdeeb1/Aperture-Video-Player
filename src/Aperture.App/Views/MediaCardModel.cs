@@ -1,5 +1,6 @@
 using Aperture.Core.Library;
 using Aperture.Core.Playback;
+using Aperture.Core.Series;
 using Microsoft.UI.Xaml.Media;
 
 namespace Aperture.App.Views;
@@ -95,5 +96,22 @@ internal sealed class MediaCardModel
         var meta = parts.Count > 0 ? string.Join(" · ", parts) : MediaCategories.SingularLabel(item.Category);
         double? progress = entry.State == WatchState.InProgress ? entry.History?.Progress : null;
         return new MediaCardModel(item.Path, item.Title, meta, progress, entry.History, entry);
+    }
+
+    /// <summary>The next episode of a show the user is watching: "Up next · S1 E3 · Lanterns".</summary>
+    public static MediaCardModel UpNext(SeriesEpisode episode, string path)
+    {
+        ArgumentNullException.ThrowIfNull(episode);
+        var item = episode.Group.All.FirstOrDefault(c => string.Equals(c.Path, path, StringComparison.OrdinalIgnoreCase)) ?? episode.Item;
+        var meta = item.EpisodeTitle is { Length: > 0 } name ? $"Up next · {episode.Label} · {name}" : $"Up next · {episode.Label}";
+        return new MediaCardModel(path, item.Title, meta, null, null, new LibraryEntry(episode.Group, WatchState.Unwatched, null));
+    }
+
+    /// <summary>A part-watched episode: "S1 E2 · 12 min left", with its progress.</summary>
+    public static MediaCardModel Continuing(SeriesEpisode episode, HistoryEntry played)
+    {
+        ArgumentNullException.ThrowIfNull(episode);
+        ArgumentNullException.ThrowIfNull(played);
+        return new MediaCardModel(played.Path, episode.Item.Title, $"{episode.Label} · {TimeFormat.Remaining(played.Remaining)}", played.Progress, played, new LibraryEntry(episode.Group, WatchState.InProgress, played));
     }
 }

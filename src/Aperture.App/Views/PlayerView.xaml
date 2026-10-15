@@ -68,6 +68,8 @@
                         <Setter Target="InfoPanel.Visibility" Value="Collapsed" />
                         <Setter Target="AdjustPanel.Visibility" Value="Collapsed" />
                         <Setter Target="ShortcutsPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="SegmentsPanel.Visibility" Value="Collapsed" />
+                        <Setter Target="NextUpCard.Width" Value="240" />
                         <Setter Target="AudioOnlyText.Visibility" Value="Collapsed" />
                         <Setter Target="FullscreenButton.Visibility" Value="Collapsed" />
                         <Setter Target="ResumeNotice.Visibility" Value="Collapsed" />
@@ -214,6 +216,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <Button
@@ -264,9 +267,22 @@
                         AutomationProperties.AutomationId="TimeText"
                         Style="{StaticResource VideoTimeTextStyle}" />
 
+                    <!-- Only while a library episode with a next one is playing. -->
+                    <Button
+                        x:Name="NextEpisodeButton"
+                        Grid.Column="5"
+                        AutomationProperties.AutomationId="NextEpisodeButton"
+                        AutomationProperties.Name="Next episode"
+                        Click="OnNextEpisodeClick"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Next episode"
+                        Visibility="Collapsed">
+                        <FontIcon Glyph="&#xE893;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+
                     <Button
                         x:Name="TracksButton"
-                        Grid.Column="5"
+                        Grid.Column="6"
                         AutomationProperties.AutomationId="TracksButton"
                         AutomationProperties.Name="Audio and subtitles"
                         Style="{StaticResource VideoIconButtonStyle}"
@@ -297,7 +313,7 @@
 
                     <Button
                         x:Name="MoreButton"
-                        Grid.Column="6"
+                        Grid.Column="7"
                         AutomationProperties.AutomationId="MoreButton"
                         AutomationProperties.Name="More options"
                         Style="{StaticResource VideoIconButtonStyle}"
@@ -308,6 +324,7 @@
                                 x:Name="MoreMenu"
                                 Closed="OnFlyoutClosed"
                                 Opened="OnFlyoutOpened"
+                                Opening="OnMoreMenuOpening"
                                 Placement="TopEdgeAlignedRight">
                                 <MenuFlyoutSubItem x:Name="SpeedMenu" Text="Playback speed">
                                     <MenuFlyoutSubItem.Icon>
@@ -329,6 +346,15 @@
                                     </ToggleMenuFlyoutItem.Icon>
                                 </ToggleMenuFlyoutItem>
                                 <ToggleMenuFlyoutItem
+                                    x:Name="SegmentsMenuItem"
+                                    AutomationProperties.AutomationId="SegmentsMenuItem"
+                                    Click="OnSegmentsMenuClick"
+                                    Text="Intro and credits">
+                                    <ToggleMenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE916;" />
+                                    </ToggleMenuFlyoutItem.Icon>
+                                </ToggleMenuFlyoutItem>
+                                <ToggleMenuFlyoutItem
                                     x:Name="InfoMenuItem"
                                     AutomationProperties.AutomationId="InfoMenuItem"
                                     Click="OnInfoMenuClick"
@@ -346,6 +372,36 @@
                                         <FontIcon Glyph="&#xE765;" />
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
+                                <MenuFlyoutSeparator x:Name="EpisodeSeparator" />
+                                <MenuFlyoutItem
+                                    x:Name="PreviousEpisodeItem"
+                                    AutomationProperties.AutomationId="PreviousEpisodeItem"
+                                    Click="OnPreviousEpisodeClick"
+                                    Text="Previous episode">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE892;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutSubItem
+                                    x:Name="ShowMenu"
+                                    AutomationProperties.AutomationId="ShowMenu"
+                                    Text="This show">
+                                    <MenuFlyoutSubItem.Icon>
+                                        <FontIcon Glyph="&#xE7F4;" />
+                                    </MenuFlyoutSubItem.Icon>
+                                    <ToggleMenuFlyoutItem
+                                        x:Name="ShowAutoplayItem"
+                                        AutomationProperties.AutomationId="ShowAutoplayItem"
+                                        Click="OnShowAutoplayClick"
+                                        Text="Play next episode automatically" />
+                                    <MenuFlyoutSubItem x:Name="ShowIntroMenu" Text="Intros" />
+                                    <MenuFlyoutSubItem x:Name="ShowRecapMenu" Text="Recaps" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        x:Name="ShowResetItem"
+                                        Click="OnShowResetClick"
+                                        Text="Use the choices in Settings" />
+                                </MenuFlyoutSubItem>
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Click="OnShowInFolderClick" Text="Show in folder">
                                     <MenuFlyoutItem.Icon>
@@ -358,7 +414,7 @@
 
                     <Button
                         x:Name="MiniPlayerButton"
-                        Grid.Column="7"
+                        Grid.Column="8"
                         AutomationProperties.AutomationId="MiniPlayerButton"
                         AutomationProperties.Name="Mini player"
                         Click="OnMiniPlayerClick"
@@ -372,7 +428,7 @@
 
                     <Button
                         x:Name="FullscreenButton"
-                        Grid.Column="8"
+                        Grid.Column="9"
                         AutomationProperties.AutomationId="FullscreenButton"
                         AutomationProperties.Name="Full screen"
                         Click="OnFullscreenClick"
@@ -386,6 +442,211 @@
                 </Grid>
             </Grid>
         </Grid>
+
+        <!--
+            ===== Skip and next episode =====
+            Bottom right, outside the fading overlay so they stay while the controls hide; they
+            move up above the controls while those show. Restrained: one quiet button, or one
+            small card. Nothing here starts playback without a visible countdown and Cancel.
+        -->
+        <StackPanel
+            x:Name="CueArea"
+            Margin="24,0,24,32"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Spacing="12">
+            <Button
+                x:Name="SkipButton"
+                MinHeight="40"
+                Padding="20,8,20,9"
+                HorizontalAlignment="Right"
+                AutomationProperties.AutomationId="SkipButton"
+                Click="OnSkipClick"
+                Content="Skip intro"
+                Style="{StaticResource ApertureButtonStyle}"
+                Visibility="Collapsed" />
+
+            <Border
+                x:Name="NextUpCard"
+                Width="320"
+                Padding="16,12,16,16"
+                AutomationProperties.AutomationId="NextUpCard"
+                AutomationProperties.Name="Next episode"
+                Background="{ThemeResource VideoPanelBrush}"
+                CornerRadius="{StaticResource RadiusLarge}"
+                PointerEntered="OnControlsPointerEntered"
+                PointerExited="OnControlsPointerExited"
+                Visibility="Collapsed">
+                <StackPanel Spacing="4">
+                    <TextBlock
+                        x:Name="NextUpCaption"
+                        AutomationProperties.AutomationId="NextUpCaption"
+                        Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                        Style="{StaticResource CaptionTextStyle}"
+                        Text="Next episode" />
+                    <TextBlock
+                        x:Name="NextUpTitle"
+                        AutomationProperties.AutomationId="NextUpTitle"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyStrongTextStyle}"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="NoWrap" />
+                    <ProgressBar
+                        x:Name="NextUpProgress"
+                        Margin="0,8,0,4"
+                        AutomationProperties.AccessibilityView="Raw"
+                        Foreground="{ThemeResource AccentBrush}"
+                        Maximum="1"
+                        Minimum="0"
+                        Visibility="Collapsed" />
+                    <StackPanel
+                        Margin="0,8,0,0"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                        <Button
+                            x:Name="NextUpPlayButton"
+                            AutomationProperties.AutomationId="NextUpPlayButton"
+                            Click="OnNextUpPlayClick"
+                            Content="Play now"
+                            Style="{StaticResource ApertureAccentButtonStyle}" />
+                        <Button
+                            x:Name="NextUpCancelButton"
+                            AutomationProperties.AutomationId="NextUpCancelButton"
+                            Click="OnNextUpCancelClick"
+                            Content="Cancel"
+                            Foreground="{ThemeResource TextOnVideoBrush}"
+                            Style="{StaticResource QuietButtonStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- ===== Intro and credits: what was found for this file, and the user's corrections ===== -->
+        <Border
+            x:Name="SegmentsPanel"
+            Width="340"
+            Margin="24,64,24,0"
+            Padding="16,12,16,16"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            AutomationProperties.Name="Intro and credits"
+            Background="{ThemeResource VideoPanelBrush}"
+            CornerRadius="{StaticResource RadiusLarge}"
+            GotFocus="OnPanelGotFocus"
+            LostFocus="OnPanelLostFocus"
+            PointerEntered="OnControlsPointerEntered"
+            PointerExited="OnControlsPointerExited"
+            Visibility="Collapsed">
+            <StackPanel Spacing="12">
+                <Grid>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        AutomationProperties.HeadingLevel="Level2"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyStrongTextStyle}"
+                        Text="Intro and credits" />
+                    <Button
+                        x:Name="SegmentsCloseButton"
+                        HorizontalAlignment="Right"
+                        AutomationProperties.AutomationId="SegmentsCloseButton"
+                        AutomationProperties.Name="Close intro and credits"
+                        Click="OnSegmentsCloseClick"
+                        Style="{StaticResource VideoIconButtonStyle}"
+                        ToolTipService.ToolTip="Close">
+                        <FontIcon FontSize="{StaticResource IconSmall}" Glyph="&#xE711;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                </Grid>
+
+                <ComboBox
+                    x:Name="SegmentKindBox"
+                    HorizontalAlignment="Stretch"
+                    AutomationProperties.AutomationId="SegmentKindBox"
+                    AutomationProperties.Name="Part of the episode"
+                    DropDownClosed="OnFlyoutClosed"
+                    DropDownOpened="OnFlyoutOpened"
+                    SelectionChanged="OnSegmentKindChanged" />
+
+                <StackPanel Spacing="2">
+                    <TextBlock
+                        x:Name="SegmentTimesText"
+                        AutomationProperties.AutomationId="SegmentTimesText"
+                        AutomationProperties.LiveSetting="Polite"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource BodyStrongTextStyle}" />
+                    <TextBlock
+                        x:Name="SegmentSourceText"
+                        AutomationProperties.AutomationId="SegmentSourceText"
+                        Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                        Style="{StaticResource CaptionTextStyle}"
+                        TextWrapping="WrapWholeWords" />
+                </StackPanel>
+
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button
+                        x:Name="MarkStartButton"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="MarkStartButton"
+                        Click="OnMarkStartClick"
+                        Content="Starts here"
+                        Style="{StaticResource ApertureButtonStyle}" />
+                    <Button
+                        x:Name="MarkEndButton"
+                        Grid.Column="1"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="MarkEndButton"
+                        Click="OnMarkEndClick"
+                        Content="Ends here"
+                        Style="{StaticResource ApertureButtonStyle}" />
+                </Grid>
+                <TextBlock
+                    x:Name="SegmentHint"
+                    AutomationProperties.AutomationId="SegmentHint"
+                    AutomationProperties.LiveSetting="Polite"
+                    Foreground="{ThemeResource TextOnVideoSecondaryBrush}"
+                    Style="{StaticResource CaptionTextStyle}"
+                    Text="Pause where it starts or ends, then press the button. Saved for this file only; other releases keep their own times."
+                    TextWrapping="WrapWholeWords" />
+
+                <StackPanel Orientation="Vertical" Spacing="0">
+                    <Button
+                        x:Name="WatchSegmentButton"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="WatchSegmentButton"
+                        Click="OnWatchSegmentClick"
+                        Content="Go to the start"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource QuietButtonStyle}" />
+                    <Button
+                        x:Name="ConfirmSegmentButton"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="ConfirmSegmentButton"
+                        Click="OnConfirmSegmentClick"
+                        Content="These times are right"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource QuietButtonStyle}" />
+                    <Button
+                        x:Name="NoSegmentButton"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="NoSegmentButton"
+                        Click="OnNoSegmentClick"
+                        Content="Not in this video"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource QuietButtonStyle}" />
+                    <Button
+                        x:Name="ResetSegmentButton"
+                        HorizontalAlignment="Left"
+                        AutomationProperties.AutomationId="ResetSegmentButton"
+                        Click="OnResetSegmentClick"
+                        Content="Undo my changes"
+                        Foreground="{ThemeResource TextOnVideoBrush}"
+                        Style="{StaticResource QuietButtonStyle}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
 
         <!-- ===== Playback info: stream and renderer details, toggled with I ===== -->
         <Border

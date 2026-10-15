@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Aperture's YouTube integration: the YouTube Data API v3, YouTube's oEmbed endpoint and
+    Google sign-in (OAuth 2.0 for installed apps). Kept apart from playback, the library and
+    the database so local media never depends on it. Platform-neutral, so its tests run on
+    Linux and Windows CI. Playback itself is YouTube's embedded player, hosted by the app.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Aperture.YouTube</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aperture.Core\Aperture.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Aperture.YouTube.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -9,6 +9,7 @@ using Aperture.Media;
 using Aperture.Media.Analysis;
 using Aperture.Playback.Mpv;
 using Aperture.Playback.Mpv.Interop;
+using Aperture.YouTube;
 
 namespace Aperture.App.Services;
 
@@ -37,7 +38,8 @@ internal sealed record AppServices(
     SeriesState Shows,
     EpisodeAnalysisCoordinator Analysis,
     LiveSettings Settings,
-    ShortcutMap InitialShortcuts)
+    ShortcutMap InitialShortcuts,
+    YouTubeService YouTube)
 {
     /// <summary>The Credential Manager entry holding the user's TMDB key.</summary>
     public const string TmdbKeyName = "TMDB";
@@ -79,14 +81,48 @@ internal sealed record AppServices(
             var series = new SqliteSeriesStore(database);
             var analysisFolder = location.AnalysisDirectory;
             var analysis = new EpisodeAnalysisCoordinator(series, () => CreateSignalReader(analysisFolder), new AnalysisCache(analysisFolder), TimeProvider.System, AppLog.FromEngine);
+            var youTube = CreateYouTube(database, secrets);
             return new StartupResult(
-                new AppServices(location, history, settingsStore, settingsStore, itemState, secrets, library, series, new SeriesState(library), analysis, settings, shortcuts),
+                new AppServices(location, history, settingsStore, settingsStore, itemState, secrets, library, series, new SeriesState(library), analysis, settings, shortcuts, youTube),
                 null);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or Microsoft.Data.Sqlite.SqliteException)
         {
             AppLog.Error("Startup failed", error);
             return new StartupResult(null, new StartupFailure(error.Message, location?.Root));
+        }
+    }
+
+    /// <summary>
+    /// The YouTube section's service. It shares nothing with local playback except the database
+    /// file (its own table) and the credential store (its own entries), so the local player works
+    /// the same with or without YouTube.
+    /// </summary>
+    private static YouTubeService CreateYouTube(ApertureDatabase database, WindowsCredentialStore secrets)
+    {
+        var account = new YouTubeAccount(secrets, new GoogleOAuth(Http, TimeProvider.System), TimeProvider.System);
+        return new YouTubeService(
+            new SqliteYouTubeStore(database),
+            new YouTubeDataApi(Http),
+            new YouTubeOEmbed(Http),
+            account,
+            secrets,
+            TimeProvider.System,
+            ViewerRegion(),
+            AppLog.FromEngine);
+    }
+
+    /// <summary>The Windows region setting (ISO 3166-1 alpha-2), used to rank YouTube results and check regional limits.</summary>
+    private static string? ViewerRegion()
+    {
+        try
+        {
+            var code = new Windows.Globalization.GeographicRegion().CodeTwoLetter;
+            return code is { Length: 2 } && code != "ZZ" ? code : null;
+        }
+        catch (Exception error) when (error is ArgumentException or System.Runtime.InteropServices.COMException)
+        {
+            return null;
         }
     }
 

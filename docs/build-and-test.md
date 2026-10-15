@@ -72,7 +72,7 @@ Without `APERTURE_TEST_MEDIA`, or without libmpv, the file tests are reported as
 
 `.github/workflows/ci.yml` runs on every push and pull request:
 
-- **Core, data and library tests** on `ubuntu-latest` and `windows-latest`.
+- **Core, data, library and YouTube tests** on `ubuntu-latest` and `windows-latest`.
 - **Test media**: an Ubuntu job generates the visual-review clips and the engine test files with FFmpeg.
 - **libmpv engine tests** on Ubuntu (distribution `libmpv2`) and Windows (the pinned build). The measured results table is written to the job summary.
 - **Windows app build** for `x64` and `ARM64`, checking that `libmpv-2.dll` and `av_libglesv2.dll` are next to the app, with a launch smoke test on x64.
@@ -84,6 +84,8 @@ To run the visual review locally on Windows (it uses a throwaway data folder, ne
 # make the clips on any machine with FFmpeg and bash, then:
 powershell -File tools/visual-review/Capture-States.ps1 -Exe <path-to-Aperture.exe> -MediaDir <clips> -OutDir <output>
 ```
+
+The visual review's YouTube step needs the network (GitHub's runners have it). It plays a public, embeddable video from a pasted link without an API key, saves it, checks the unavailable-video explanation, and screenshots the consent screen and Settings › YouTube. Search, liked videos and playlists need a key or a sign-in and are covered by unit tests against recorded API responses, not by CI.
 
 ## Data location
 

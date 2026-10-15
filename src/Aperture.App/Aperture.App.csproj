@@ -37,6 +37,12 @@
     <ProjectReference Include="..\Aperture.Media\Aperture.Media.csproj" />
     <ProjectReference Include="..\Aperture.Playback.Mpv\Aperture.Playback.Mpv.csproj" />
     <ProjectReference Include="..\Aperture.Video\Aperture.Video.csproj" />
+    <ProjectReference Include="..\Aperture.YouTube\Aperture.YouTube.csproj" />
+  </ItemGroup>
+
+  <!-- The page that hosts YouTube's embedded player, served to WebView2 from a virtual host. -->
+  <ItemGroup>
+    <Content Include="Assets\YouTube\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

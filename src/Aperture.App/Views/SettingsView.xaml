@@ -421,6 +421,197 @@
                     Text="This product uses the TMDB API but is not endorsed or certified by TMDB." />
             </StackPanel>
 
+            <!-- YouTube -->
+            <TextBlock
+                x:Name="YouTubeHeader"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource SettingGroupHeaderTextStyle}"
+                Text="YouTube" />
+            <StackPanel Spacing="2">
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Play the next YouTube video automatically" />
+                        <TextBlock
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="When a video from a list ends, the next one starts after a 10-second countdown you can cancel. Separate from TV episodes." />
+                    </StackPanel>
+                    <ToggleSwitch
+                        x:Name="YouTubeAutoplayToggle"
+                        Grid.Column="1"
+                        MinWidth="0"
+                        AutomationProperties.AutomationId="YouTubeAutoplayToggle"
+                        AutomationProperties.Name="Play the next YouTube video automatically"
+                        OffContent=""
+                        OnContent=""
+                        Toggled="OnSettingChanged" />
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="YouTube Data API key" />
+                        <TextBlock
+                            x:Name="YouTubeKeyCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Needed to search YouTube and show popular videos. Create a key for the YouTube Data API v3 in your own Google Cloud project. It’s kept in Windows Credential Manager." />
+                    </StackPanel>
+                    <HyperlinkButton
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Content="How to get one"
+                        NavigateUri="https://developers.google.com/youtube/v3/getting-started" />
+                    <Grid
+                        Grid.Row="1"
+                        Grid.ColumnSpan="2"
+                        Margin="0,12,0,0"
+                        ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <PasswordBox
+                            x:Name="YouTubeKeyBox"
+                            AutomationProperties.AutomationId="YouTubeKeyBox"
+                            AutomationProperties.Name="YouTube Data API key"
+                            PasswordChanged="OnYouTubeKeyChanged"
+                            PlaceholderText="Paste your API key" />
+                        <Button
+                            x:Name="SaveYouTubeKeyButton"
+                            Grid.Column="1"
+                            AutomationProperties.AutomationId="SaveYouTubeKeyButton"
+                            Click="OnSaveYouTubeKeyClick"
+                            Content="Save"
+                            IsEnabled="False"
+                            Style="{StaticResource ApertureButtonStyle}" />
+                        <Button
+                            x:Name="RemoveYouTubeKeyButton"
+                            Grid.Column="2"
+                            AutomationProperties.AutomationId="RemoveYouTubeKeyButton"
+                            Click="OnRemoveYouTubeKeyClick"
+                            Content="Remove"
+                            Style="{StaticResource ApertureButtonStyle}" />
+                    </Grid>
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="YouTube account" />
+                        <TextBlock
+                            x:Name="YouTubeAccountCaption"
+                            AutomationProperties.AutomationId="YouTubeAccountCaption"
+                            AutomationProperties.LiveSetting="Polite"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                    <Button
+                        x:Name="YouTubeSignInButton"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="YouTubeSignInButton"
+                        Click="OnYouTubeSignInClick"
+                        Content="Sign in…"
+                        Style="{StaticResource ApertureButtonStyle}" />
+                    <!-- The OAuth client: only needed for signing in, so it stays out of the way. -->
+                    <Expander
+                        x:Name="YouTubeClientExpander"
+                        Grid.Row="1"
+                        Grid.ColumnSpan="2"
+                        Margin="0,12,0,0"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        AutomationProperties.AutomationId="YouTubeClientExpander"
+                        Header="Google sign-in client">
+                        <StackPanel Spacing="8">
+                            <TextBlock Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap">
+                                <Run Text="Signing in needs an OAuth client of type “Desktop app” from your Google Cloud project, with the YouTube Data API v3 turned on. Aperture asks only for read-only access. While the project is in “Testing”, Google ends the sign-in after 7 days. Steps are in Aperture’s" />
+                                <Hyperlink NavigateUri="https://github.com/KhanAdeeb1/Aperture-Video-Player/blob/HEAD/docs/youtube.md">YouTube setup guide</Hyperlink><Run Text="." />
+                            </TextBlock>
+                            <TextBox
+                                x:Name="YouTubeClientIdBox"
+                                AutomationProperties.AutomationId="YouTubeClientIdBox"
+                                AutomationProperties.Name="OAuth client ID"
+                                Header="Client ID"
+                                PlaceholderText="…apps.googleusercontent.com"
+                                TextChanged="OnYouTubeClientChanged" />
+                            <PasswordBox
+                                x:Name="YouTubeClientSecretBox"
+                                AutomationProperties.AutomationId="YouTubeClientSecretBox"
+                                AutomationProperties.Name="OAuth client secret"
+                                Header="Client secret"
+                                PasswordChanged="OnYouTubeClientChanged" />
+                            <Button
+                                x:Name="SaveYouTubeClientButton"
+                                AutomationProperties.AutomationId="SaveYouTubeClientButton"
+                                Click="OnSaveYouTubeClientClick"
+                                Content="Save client"
+                                IsEnabled="False"
+                                Style="{StaticResource ApertureButtonStyle}" />
+                        </StackPanel>
+                    </Expander>
+                </Grid>
+                <Grid Style="{StaticResource SettingRowStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Delete YouTube data" />
+                        <TextBlock
+                            x:Name="ClearYouTubeCaption"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="Forgets Continue watching, Saved, YouTube’s titles and thumbnails and the player’s cookies, and signs out. Your keys stay." />
+                    </StackPanel>
+                    <Button
+                        x:Name="ClearYouTubeButton"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="ClearYouTubeButton"
+                        Content="Delete…"
+                        Style="{StaticResource ApertureButtonStyle}">
+                        <Button.Flyout>
+                            <Flyout x:Name="ClearYouTubeFlyout" Placement="BottomEdgeAlignedRight">
+                                <StackPanel MaxWidth="300" Spacing="12">
+                                    <TextBlock Style="{StaticResource BodyStrongTextStyle}" Text="Delete all YouTube data?" />
+                                    <TextBlock Style="{StaticResource BodyTextStyle}" Text="Aperture also asks Google to revoke its access. Nothing on YouTube itself changes." />
+                                    <Button
+                                        HorizontalAlignment="Right"
+                                        AutomationProperties.AutomationId="ConfirmClearYouTubeButton"
+                                        Click="OnConfirmClearYouTube"
+                                        Content="Delete"
+                                        Style="{StaticResource ApertureAccentButtonStyle}" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </Grid>
+                <TextBlock
+                    Margin="16,8,16,0"
+                    Style="{StaticResource CaptionTextStyle}"
+                    TextWrapping="Wrap">
+                    <Run Text="YouTube is used under the" />
+                    <Hyperlink NavigateUri="https://www.youtube.com/t/terms">YouTube Terms of Service</Hyperlink><Run Text=" and the" />
+                    <Hyperlink NavigateUri="https://policies.google.com/privacy">Google Privacy Policy</Hyperlink><Run Text=". You can also remove Aperture’s access in your" />
+                    <Hyperlink NavigateUri="https://myaccount.google.com/connections">Google Account</Hyperlink><Run Text=". Aperture is not made or endorsed by YouTube or Google." />
+                </TextBlock>
+            </StackPanel>
+
             <!-- History -->
             <TextBlock
                 AutomationProperties.HeadingLevel="Level2"

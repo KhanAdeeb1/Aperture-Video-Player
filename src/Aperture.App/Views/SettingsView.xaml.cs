@@ -73,6 +73,12 @@ public sealed partial class SettingsView : UserControl
     /// <summary>The user asked to add a library folder (the window shows the folder picker).</summary>
     public event EventHandler? AddFolderRequested;
 
+    /// <summary>The YouTube key, sign-in or records changed.</summary>
+    public event EventHandler? YouTubeChanged;
+
+    /// <summary>The user deleted YouTube data; the player's browsing data goes too.</summary>
+    public event EventHandler? YouTubeDataCleared;
+
     internal void Initialize(AppServices services, Func<ShortcutMap> shortcuts, bool subtitleBoxSupported)
     {
         _services = services;
@@ -85,6 +91,8 @@ public sealed partial class SettingsView : UserControl
 
         Show(services.Settings.Current);
         ShowKeyState();
+        ShowYouTubeState();
+        services.YouTube.Account.Changed += (_, _) => DispatcherQueue.TryEnqueue(ShowYouTubeState);
         services.Library.Changed += (_, _) => DispatcherQueue.TryEnqueue(async () => await RefreshFoldersAsync());
         services.Library.ProgressChanged += (_, progress) =>
         {
@@ -156,6 +164,7 @@ public sealed partial class SettingsView : UserControl
         Select(RecapSkipBox, settings.RecapSkip);
         CreditsToggle.IsOn = settings.OfferSkipCredits;
         FindSegmentsToggle.IsOn = settings.FindSegments;
+        YouTubeAutoplayToggle.IsOn = settings.YouTubeAutoplay;
         RememberToggle.IsOn = settings.RememberHistory;
         OnlineToggle.IsOn = settings.OnlineMetadata;
         KeyRow.Visibility = settings.OnlineMetadata ? Visibility.Visible : Visibility.Collapsed;
@@ -191,6 +200,7 @@ public sealed partial class SettingsView : UserControl
             RecapSkip = Selected(RecapSkipBox, current.RecapSkip),
             OfferSkipCredits = CreditsToggle.IsOn,
             FindSegments = FindSegmentsToggle.IsOn,
+            YouTubeAutoplay = YouTubeAutoplayToggle.IsOn,
             RememberHistory = RememberToggle.IsOn,
             OnlineMetadata = OnlineToggle.IsOn,
         };
@@ -394,6 +404,150 @@ public sealed partial class SettingsView : UserControl
         _services?.Secrets.Write(AppServices.TmdbKeyName, null);
         ShowKeyState();
         KeyCaption.Text = "Key removed. Artwork already downloaded stays until you remove the folder.";
+    }
+
+    // ===== YouTube =====
+
+    /// <summary>Scrolls to the YouTube settings (from the YouTube page's "Set up" button).</summary>
+    public void BringYouTubeIntoView() =>
+        YouTubeHeader.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0, AnimationDesired = false });
+
+    private void ShowYouTubeState()
+    {
+        if (_services is null)
+        {
+            return;
+        }
+
+        var youTube = _services.YouTube;
+        RemoveYouTubeKeyButton.Visibility = youTube.HasApiKey ? Visibility.Visible : Visibility.Collapsed;
+        YouTubeKeyBox.PlaceholderText = youTube.HasApiKey ? "A key is saved. Paste a new one to replace it." : "Paste your API key";
+
+        var client = youTube.Account.Client;
+        YouTubeClientIdBox.Text = client?.ClientId ?? string.Empty;
+        YouTubeClientSecretBox.PlaceholderText = client?.ClientSecret is { Length: > 0 } ? "Saved" : string.Empty;
+        SaveYouTubeClientButton.IsEnabled = false;
+        if (youTube.Account.IsSignedIn)
+        {
+            YouTubeAccountCaption.Text = "Signed in. Aperture can read your playlists and liked videos; it can’t change anything on YouTube.";
+            YouTubeSignInButton.Content = "Sign out";
+            YouTubeSignInButton.IsEnabled = true;
+        }
+        else
+        {
+            YouTubeAccountCaption.Text = client is null
+                ? "Optional. Shows your playlists and liked videos. Set up a Google sign-in client below first."
+                : "Optional. Shows your playlists and liked videos, read-only. Opens Google’s sign-in page in your browser.";
+            YouTubeSignInButton.Content = "Sign in…";
+            YouTubeSignInButton.IsEnabled = client is not null;
+        }
+
+        YouTubeClientExpander.IsExpanded = client is null && YouTubeClientExpander.IsExpanded;
+    }
+
+    private void OnYouTubeKeyChanged(object sender, RoutedEventArgs e) => SaveYouTubeKeyButton.IsEnabled = YouTubeKeyBox.Password.Trim().Length > 0;
+
+    private void OnSaveYouTubeKeyClick(object sender, RoutedEventArgs e)
+    {
+        if (_services is null)
+        {
+            return;
+        }
+
+        _services.YouTube.SetApiKey(YouTubeKeyBox.Password);
+        YouTubeKeyBox.Password = string.Empty;
+        YouTubeKeyCaption.Text = _services.YouTube.HasApiKey
+            ? "Key saved in Windows Credential Manager. Search and popular videos are available in the YouTube section."
+            : "Windows couldn’t save the key. Details are in Aperture’s log.";
+        ShowYouTubeState();
+        YouTubeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnRemoveYouTubeKeyClick(object sender, RoutedEventArgs e)
+    {
+        _services?.YouTube.SetApiKey(null);
+        YouTubeKeyCaption.Text = "Key removed. Links you paste still play; search needs a key.";
+        ShowYouTubeState();
+        YouTubeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnYouTubeClientChanged(object sender, RoutedEventArgs e) =>
+        SaveYouTubeClientButton.IsEnabled = YouTubeClientIdBox.Text.Trim().Length > 0;
+
+    private void OnSaveYouTubeClientClick(object sender, RoutedEventArgs e)
+    {
+        if (_services is null)
+        {
+            return;
+        }
+
+        var secret = YouTubeClientSecretBox.Password.Length > 0 ? YouTubeClientSecretBox.Password : _services.YouTube.Account.Client?.ClientSecret;
+        _services.YouTube.Account.SetClient(YouTubeClientIdBox.Text, secret);
+        YouTubeClientSecretBox.Password = string.Empty;
+        ShowYouTubeState();
+    }
+
+    private async void OnYouTubeSignInClick(object sender, RoutedEventArgs e)
+    {
+        if (_services is null)
+        {
+            return;
+        }
+
+        var account = _services.YouTube.Account;
+        YouTubeSignInButton.IsEnabled = false;
+        try
+        {
+            if (account.IsSignedIn)
+            {
+                var revoked = await account.SignOutAsync(CancellationToken.None);
+                YouTubeAccountCaption.Text = revoked
+                    ? "Signed out, and Google was asked to remove Aperture’s access."
+                    : "Signed out here. Google couldn’t be reached to remove Aperture’s access; you can remove it in your Google Account.";
+            }
+            else
+            {
+                YouTubeAccountCaption.Text = "Waiting for you to sign in in your browser…";
+                await account.SignInAsync(async uri => await Windows.System.Launcher.LaunchUriAsync(uri), CancellationToken.None);
+                ShowYouTubeState();
+            }
+        }
+        catch (Aperture.YouTube.YouTubeApiException error)
+        {
+            AppLog.Warning($"YouTube sign-in failed: {error.Message}");
+            ShowYouTubeState();
+            YouTubeAccountCaption.Text = error.Problem == Aperture.YouTube.YouTubeProblem.Offline ? error.Explain() : error.Message;
+        }
+        finally
+        {
+            YouTubeSignInButton.IsEnabled = account.Client is not null;
+        }
+
+        YouTubeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async void OnConfirmClearYouTube(object sender, RoutedEventArgs e)
+    {
+        ClearYouTubeFlyout.Hide();
+        if (_services is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _services.YouTube.ClearAllAsync(CancellationToken.None);
+            ClearYouTubeCaption.Text = "YouTube data deleted and signed out. Nothing on YouTube itself changed.";
+        }
+        catch (System.Data.Common.DbException error)
+        {
+            AppLog.Error("Could not delete YouTube data", error);
+            ClearYouTubeCaption.Text = "Aperture couldn’t delete its YouTube records. Details are in Aperture’s log.";
+        }
+
+        ShowYouTubeState();
+        YouTubeDataCleared?.Invoke(this, EventArgs.Empty);
+        YouTubeChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // ===== History and data =====

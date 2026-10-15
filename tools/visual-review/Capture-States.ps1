@@ -762,6 +762,82 @@ Step 'Resume choice' {
     Stop-Aperture $p
 }
 
+# YouTube needs the network; GitHub's Windows runners have it. No API key is configured,
+# so this covers the keyless path: consent, pasting a link, the embedded player (oEmbed
+# for details), saving, the unavailable-video panel and the settings group.
+function Wait-Log([string] $text, [int] $seconds) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        if ((Get-LogText).Contains($text)) { return $true }
+        Start-Sleep -Milliseconds 500
+    }
+    return $false
+}
+
+function Open-YouTubeLink($p, [string] $url) {
+    Send-Keys $p '^f'
+    Start-Sleep -Milliseconds 500
+    [System.Windows.Forms.SendKeys]::SendWait($url + '{ENTER}')
+}
+
+Step 'YouTube' {
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Invoke-Element (Find-Element $p 'YouTubeButton')
+    Find-Element $p 'YouTubeAcceptButton' | Out-Null
+    Move-MouseAway
+    Save-Shot $p '80-youtube-consent'
+
+    Invoke-Element (Find-Element $p 'YouTubeAcceptButton')
+    Find-Element $p 'YouTubeNotice' | Out-Null
+    Save-Shot $p '81-youtube-no-key'
+
+    Open-YouTubeLink $p 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
+    if (-not (Wait-Log 'YouTube player: playing.' 60)) {
+        Save-Shot $p '82-youtube-player-failed'
+        throw 'the YouTube video did not start playing'
+    }
+    Start-Sleep -Seconds 3
+    Move-MouseAway
+    Save-Shot $p '82-youtube-player'
+    # Nothing Aperture draws may cover the embedded player while it plays.
+    foreach ($id in 'YouTubeProblemTitle', 'YouTubeNextCaption') {
+        $over = $null
+        try { $over = Find-Element $p $id 1 } catch { }
+        if ($over -and -not $over.Current.IsOffscreen) { throw "'$id' is showing over the player" }
+    }
+    Invoke-Element (Find-Element $p 'YouTubeSaveButton')
+    Start-Sleep -Seconds 1
+    Stop-Aperture $p
+
+    # Saved survives a restart, and the consent is not asked again.
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Invoke-Element (Find-Element $p 'YouTubeButton')
+    if (-not (Find-ByName $p 'Saved' 10)) { throw 'the Saved shelf did not appear after a restart' }
+    Start-Sleep -Seconds 2
+    Move-MouseAway
+    Save-Shot $p '83-youtube-saved'
+
+    # A video id that does not exist is explained, not played or left blank.
+    Open-YouTubeLink $p 'https://www.youtube.com/watch?v=Ap3rtur3x0Q'
+    $title = Find-Element $p 'YouTubeProblemTitle' 30
+    Note "Unavailable video: $($title.Current.Name)"
+    Move-MouseAway
+    Save-Shot $p '84-youtube-unavailable'
+    Stop-Aperture $p
+
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Send-Keys $p '^,'
+    Start-Sleep -Seconds 1
+    (Find-Element $p 'YouTubeAutoplayToggle').SetFocus()
+    Start-Sleep -Seconds 1
+    Move-MouseAway
+    Save-Shot $p '85-settings-youtube'
+    Stop-Aperture $p
+}
+
 # ---------------------------------------------------------------------------------------
 $logFile = Join-Path $dataDir 'Logs\aperture.log'
 if (Test-Path $logFile) { Copy-Item $logFile (Join-Path $OutDir 'aperture.log') }

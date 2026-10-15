@@ -25,7 +25,9 @@ public class SqliteSettingsStoreTests
             Subtitles: new SubtitleStyle(SubtitleSize.Large, SubtitleColor.Yellow, SubtitleBackground.Box),
             Volume: 0.35,
             Muted: true,
-            OnlineMetadata: true);
+            OnlineMetadata: true,
+            Sound: new SoundOptions(EvenVolume: true),
+            SeekPreviews: false);
 
         await store.SaveAsync(changed);
         await store.SaveAsync(changed);

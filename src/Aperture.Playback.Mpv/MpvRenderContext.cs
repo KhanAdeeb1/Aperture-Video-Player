@@ -13,17 +13,17 @@ public sealed unsafe class MpvRenderContext : IDisposable
 {
     private static readonly IntPtr SoftwareFormat = Marshal.StringToCoTaskMemUTF8("bgr0");
 
-    private readonly MpvPlaybackEngine _engine;
+    private readonly MpvPlaybackEngine? _engine;
     private GCHandle _self;
     private Action? _onUpdate;
     private IntPtr _context;
 
-    private MpvRenderContext(MpvPlaybackEngine engine, IntPtr context, bool isOpenGl)
+    private MpvRenderContext(MpvPlaybackEngine? engine, IntPtr context, bool isOpenGl)
     {
         _engine = engine;
         _context = context;
         IsOpenGl = isOpenGl;
-        engine.RenderContextCreated();
+        engine?.RenderContextCreated();
     }
 
     /// <summary>True for the OpenGL kind, false for the software renderer.</summary>
@@ -49,7 +49,7 @@ public sealed unsafe class MpvRenderContext : IDisposable
                 new(MpvRenderParamType.AdvancedControl, (IntPtr)(&advanced)),
                 new(MpvRenderParamType.Invalid, IntPtr.Zero),
             };
-            return Create(engine, parameters, isOpenGl: true, out error);
+            return Create(engine, engine.Handle, parameters, isOpenGl: true, out error);
         }
         finally
         {
@@ -61,6 +61,14 @@ public sealed unsafe class MpvRenderContext : IDisposable
     public static MpvRenderContext? CreateSoftware(MpvPlaybackEngine engine, out string? error)
     {
         ArgumentNullException.ThrowIfNull(engine);
+        return CreateSoftware(engine, engine.Handle, out error);
+    }
+
+    /// <summary>A software render context for a libmpv instance that is not a player (seek previews).</summary>
+    internal static MpvRenderContext? CreateSoftware(MpvClient client, out string? error) => CreateSoftware(null, client.Handle, out error);
+
+    private static MpvRenderContext? CreateSoftware(MpvPlaybackEngine? engine, IntPtr handle, out string? error)
+    {
         var api = Marshal.StringToCoTaskMemUTF8("sw");
         try
         {
@@ -69,7 +77,7 @@ public sealed unsafe class MpvRenderContext : IDisposable
                 new(MpvRenderParamType.ApiType, api),
                 new(MpvRenderParamType.Invalid, IntPtr.Zero),
             };
-            return Create(engine, parameters, isOpenGl: false, out error);
+            return Create(engine, handle, parameters, isOpenGl: false, out error);
         }
         finally
         {
@@ -151,15 +159,15 @@ public sealed unsafe class MpvRenderContext : IDisposable
             _self.Free();
         }
 
-        _engine.RenderContextFreed();
+        _engine?.RenderContextFreed();
     }
 
     /// <summary>libmpv's text for a render result code.</summary>
     public static string Describe(int result) => MpvNative.Describe(result);
 
-    private static MpvRenderContext? Create(MpvPlaybackEngine engine, MpvRenderParam* parameters, bool isOpenGl, out string? error)
+    private static MpvRenderContext? Create(MpvPlaybackEngine? engine, IntPtr handle, MpvRenderParam* parameters, bool isOpenGl, out string? error)
     {
-        var result = MpvNative.RenderContextCreate(out var context, engine.Handle, parameters);
+        var result = MpvNative.RenderContextCreate(out var context, handle, parameters);
         if (result < 0)
         {
             error = MpvNative.Describe(result);

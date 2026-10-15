@@ -52,6 +52,7 @@ public sealed record AppSettings(
     public static AppSettings Default { get; } = new(Resume: ResumeMode.Resume, RememberHistory: true, ControlsHideDelaySeconds: 3)
     {
         Subtitles = SubtitleStyle.Default,
+        Sound = SoundOptions.Off,
     };
 
     /// <summary>Subtitle style, never null.</summary>
@@ -72,5 +73,6 @@ public sealed record AppSettings(
         NextEpisodeCountdownSeconds = CountdownChoices.Contains(NextEpisodeCountdownSeconds) ? NextEpisodeCountdownSeconds : Default.NextEpisodeCountdownSeconds,
         IntroSkip = Enum.IsDefined(IntroSkip) ? IntroSkip : Default.IntroSkip,
         RecapSkip = Enum.IsDefined(RecapSkip) ? RecapSkip : Default.RecapSkip,
+        Sound = Sound ?? SoundOptions.Off,
     };
 }

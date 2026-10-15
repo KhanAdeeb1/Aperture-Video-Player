@@ -48,10 +48,12 @@ public sealed class SignalReaderTests : IDisposable
         Assert.InRange(audio.Length.TotalSeconds, 9.7, 10.3);
     }
 
-    [MediaFact]
-    public async Task A_black_ending_is_found_where_it_is()
+    [MediaTheory]
+    [InlineData("Harbour.S01E01.mkv")]
+    [InlineData("Harbour.S01E01.mp4")]
+    public async Task A_black_ending_is_found_where_it_is(string name)
     {
-        var dark = await _reader.FindDarkStretchesAsync(TestMedia.PathOf("Harbour.S01E01.mkv"), TimeSpan.FromSeconds(50));
+        var dark = await _reader.FindDarkStretchesAsync(TestMedia.PathOf(name), TimeSpan.FromSeconds(50));
 
         Assert.NotNull(dark);
         var stretch = Assert.Single(dark);

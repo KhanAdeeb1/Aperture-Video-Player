@@ -73,9 +73,18 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
         var found = new List<TimeRange>();
         var gate = new Lock();
         double? duration = null;
+        var filterLines = 0;
+        string? lastFilterLine = null;
         void OnLog(MpvMessage message)
         {
-            if (message.LogPrefix != "ffmpeg" || message.LogText is not { } text || BlackLine().Match(text) is not { Success: true } match)
+            if (message.LogPrefix != "ffmpeg" || message.LogText is not { } text)
+            {
+                return;
+            }
+
+            Interlocked.Increment(ref filterLines);
+            lastFilterLine = text;
+            if (BlackLine().Match(text) is not { Success: true } match)
             {
                 return;
             }
@@ -114,6 +123,12 @@ public sealed partial class MpvSignalReader(string workDirectory, Action<string,
             if (duration is { } total && found.Count > 0 && total - found[^1].End.TotalSeconds is > 0 and < 0.5)
             {
                 found[^1] = found[^1] with { End = TimeSpan.FromSeconds(total) };
+            }
+
+            if (found.Count == 0)
+            {
+                // Most episodes end on a dark picture; say what was read when none was found.
+                log("info", $"No dark picture in {Path.GetFileName(path)} after {start:hh\\:mm\\:ss} ({filterLines} filter messages{(lastFilterLine is { } last ? $", last: {last.Trim()}" : string.Empty)})");
             }
 
             return found.OrderBy(r => r.Start).ToList();

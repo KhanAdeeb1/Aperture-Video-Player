@@ -498,8 +498,11 @@ Step 'Library' {
     $pickerHandle = [Win]::FindWindow('#32770', [NullString]::Value)
     if ($pickerHandle -ne [IntPtr]::Zero) {
         $picker = [System.Windows.Automation.AutomationElement]::FromHandle($pickerHandle)
+        # The commit button is the dialog's IDOK button; list rows can carry the same id.
         $select = $picker.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, '1')))
+            (New-Object System.Windows.Automation.AndCondition(
+                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, '1')),
+                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)))))
         if (-not $select) { throw 'the folder picker has no commit button' }
         Note "Folder picker commit button: $($select.Current.Name)"
         Invoke-Element $select

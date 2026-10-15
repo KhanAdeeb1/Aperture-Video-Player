@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    A played file: 16:9 artwork with its progress, title and one line of context.
+    Hover adds a hairline ring and lifts the title; keyboard focus uses the system
+    focus visual around the whole card. Right-click or Shift+F10 opens its actions.
+-->
+<UserControl
+    x:Class="Aperture.App.Views.MediaCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Button
+        x:Name="CardButton"
+        AutomationProperties.AutomationId="MediaCard"
+        Click="OnInvoke"
+        PointerCanceled="OnPointerExited"
+        PointerEntered="OnPointerEntered"
+        PointerExited="OnPointerExited"
+        Style="{StaticResource CardButtonStyle}">
+        <Button.ContextFlyout>
+            <MenuFlyout>
+                <MenuFlyoutItem Click="OnInvoke" Text="Play">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon Glyph="&#xE768;" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Click="OnShowInFolder" Text="Show in folder">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon Glyph="&#xE838;" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Click="OnRemove" Text="Remove from history">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon Glyph="&#xE711;" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+            </MenuFlyout>
+        </Button.ContextFlyout>
+
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="HoverStates">
+                <VisualState x:Name="Rest" />
+                <VisualState x:Name="Hover">
+                    <VisualState.Setters>
+                        <Setter Target="HoverRing.Opacity" Value="1" />
+                        <Setter Target="TitleText.Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
+        <StackPanel>
+            <Grid
+                x:Name="Artwork"
+                Background="{ThemeResource ArtworkEmptyBrush}"
+                CornerRadius="{StaticResource RadiusMedium}"
+                SizeChanged="OnArtworkSizeChanged">
+                <!-- Designed empty artwork: the title set quietly, for files Windows has no frame for. -->
+                <TextBlock
+                    x:Name="EmptyTitle"
+                    Margin="16"
+                    VerticalAlignment="Bottom"
+                    FontFamily="{StaticResource FontDisplay}"
+                    FontSize="{StaticResource TypeBodyLargeSize}"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextTertiaryBrush}"
+                    MaxLines="2"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="WrapWholeWords" />
+                <Image x:Name="ArtworkImage" Stretch="UniformToFill" />
+                <Border
+                    x:Name="ProgressScrim"
+                    Background="{ThemeResource ArtworkScrimBrush}"
+                    Visibility="Collapsed" />
+                <Grid
+                    x:Name="ProgressTrack"
+                    Height="{StaticResource ProgressThickness}"
+                    Margin="12,0,12,12"
+                    VerticalAlignment="Bottom"
+                    Background="{ThemeResource VideoTrackBrush}"
+                    CornerRadius="2"
+                    Visibility="Collapsed">
+                    <Border
+                        x:Name="ProgressFill"
+                        HorizontalAlignment="Left"
+                        Background="{ThemeResource AccentBrush}"
+                        CornerRadius="2" />
+                </Grid>
+                <Border
+                    BorderBrush="{ThemeResource StrokeSubtleBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource RadiusMedium}" />
+                <Border
+                    x:Name="HoverRing"
+                    BorderBrush="{ThemeResource StrokeHoverBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource RadiusMedium}"
+                    Opacity="0">
+                    <Border.OpacityTransition>
+                        <ScalarTransition Duration="0:0:0.12" />
+                    </Border.OpacityTransition>
+                </Border>
+            </Grid>
+            <TextBlock
+                x:Name="TitleText"
+                Margin="0,10,0,0"
+                Foreground="{ThemeResource TextSecondaryBrush}"
+                Style="{StaticResource CardTitleTextStyle}" />
+            <TextBlock
+                x:Name="MetaText"
+                Margin="0,2,0,0"
+                Style="{StaticResource CardMetaTextStyle}" />
+        </StackPanel>
+    </Button>
+</UserControl>

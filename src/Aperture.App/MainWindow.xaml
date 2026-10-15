@@ -1,19 +1,184 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Milestone 0 shell: an empty, correctly themed window with no controls.
-    The player surface and its controls arrive in Milestones 1 and 2.
+    The single Aperture window. Home and Settings sit below a 48 px title bar that
+    carries the wordmark, search and the two global actions. The player fills the
+    whole window, and the title bar becomes part of its fading overlay.
 -->
 <Window
     x:Class="Aperture.App.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:Aperture.App.Views"
     Title="Aperture">
-    <Grid Background="{StaticResource SurfaceBaseBrush}">
-        <TextBlock
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            FontSize="{StaticResource TypeCaptionSize}"
-            Foreground="{StaticResource TextTertiaryBrush}"
-            Text="Aperture" />
+
+    <Grid
+        x:Name="Root"
+        AllowDrop="True"
+        Background="{ThemeResource SurfaceBaseBrush}"
+        DragLeave="OnDragLeave"
+        DragOver="OnDragOver"
+        Drop="OnDrop"
+        PreviewKeyDown="OnPreviewKeyDown">
+        <Grid.RowDefinitions>
+            <!-- Auto: the row follows the title bar, whose height is the TitleBarHeight token (32 in the mini-player). -->
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="PageHost" Grid.Row="1">
+            <views:HomeView x:Name="HomePage" />
+            <views:SettingsView x:Name="SettingsPage" Visibility="Collapsed" />
+
+            <!-- Startup failure: the data folder or database could not be opened. -->
+            <StackPanel
+                x:Name="StartupErrorPanel"
+                MaxWidth="460"
+                Margin="24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Visibility="Collapsed">
+                <FontIcon
+                    Margin="0,0,0,20"
+                    FontFamily="{StaticResource FontIcons}"
+                    FontSize="{StaticResource IconStatus}"
+                    Foreground="{ThemeResource StatusCriticalBrush}"
+                    Glyph="&#xE783;" />
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level1"
+                    AutomationProperties.LiveSetting="Assertive"
+                    HorizontalTextAlignment="Center"
+                    Style="{StaticResource SubtitleTextStyle}"
+                    Text="Aperture couldn't open its data" />
+                <TextBlock
+                    Margin="0,8,0,0"
+                    HorizontalTextAlignment="Center"
+                    Style="{StaticResource BodyTextStyle}"
+                    Text="Your videos are safe; this only affects Aperture's own records. You can still play files, but positions won't be remembered until this is fixed." />
+                <TextBlock
+                    x:Name="StartupErrorDetail"
+                    Margin="0,16,0,0"
+                    HorizontalTextAlignment="Center"
+                    IsTextSelectionEnabled="True"
+                    Style="{StaticResource CaptionTextStyle}" />
+            </StackPanel>
+        </Grid>
+
+        <views:PlayerView
+            x:Name="PlayerPage"
+            Grid.RowSpan="2"
+            Visibility="Collapsed" />
+
+        <TitleBar
+            x:Name="AppTitleBar"
+            Height="{StaticResource TitleBarHeight}"
+            AutomationProperties.AutomationId="AppTitleBar"
+            BackRequested="OnBackRequested"
+            IsBackButtonVisible="False">
+            <TitleBar.OpacityTransition>
+                <ScalarTransition Duration="0:0:0.2" />
+            </TitleBar.OpacityTransition>
+            <TitleBar.LeftHeader>
+                <StackPanel
+                    x:Name="Wordmark"
+                    Margin="16,0,8,0"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="10">
+                    <Grid
+                        Width="16"
+                        Height="16"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AccessibilityView="Raw">
+                        <Ellipse Stroke="{ThemeResource TextSecondaryBrush}" StrokeThickness="1.25" />
+                        <Ellipse
+                            Width="5"
+                            Height="5"
+                            Fill="{ThemeResource AccentBrush}" />
+                    </Grid>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontFamily="{StaticResource FontDisplay}"
+                        FontSize="{StaticResource TypeBodySize}"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource TextPrimaryBrush}"
+                        Text="Aperture" />
+                </StackPanel>
+            </TitleBar.LeftHeader>
+            <TitleBar.Content>
+                <AutoSuggestBox
+                    x:Name="SearchBox"
+                    MaxWidth="{StaticResource SearchWidth}"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="SearchBox"
+                    AutomationProperties.Name="Search played videos"
+                    PlaceholderText="Search played videos"
+                    QueryIcon="Find"
+                    TextChanged="OnSearchTextChanged"
+                    ToolTipService.ToolTip="Search (Ctrl+F)" />
+            </TitleBar.Content>
+            <TitleBar.RightHeader>
+                <StackPanel
+                    x:Name="GlobalActions"
+                    Margin="0,0,4,0"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="4">
+                    <Button
+                        x:Name="OpenButton"
+                        AutomationProperties.AutomationId="OpenButton"
+                        AutomationProperties.Name="Open file"
+                        Click="OnOpenClick"
+                        Style="{StaticResource QuietButtonStyle}"
+                        ToolTipService.ToolTip="Open file (Ctrl+O)">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE8E5;" Style="{StaticResource IconGlyphStyle}" />
+                            <TextBlock Text="Open" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="SettingsButton"
+                        AutomationProperties.AutomationId="SettingsButton"
+                        AutomationProperties.Name="Settings"
+                        Click="OnSettingsClick"
+                        Style="{StaticResource IconButtonStyle}"
+                        ToolTipService.ToolTip="Settings (Ctrl+,)">
+                        <FontIcon Glyph="&#xE713;" Style="{StaticResource IconGlyphStyle}" />
+                    </Button>
+                </StackPanel>
+            </TitleBar.RightHeader>
+        </TitleBar>
+
+        <!-- Drag and drop: the whole window is the target. -->
+        <Grid
+            x:Name="DropOverlay"
+            Grid.RowSpan="2"
+            Background="{ThemeResource SurfaceBaseBrush}"
+            IsHitTestVisible="False"
+            Opacity="0">
+            <Grid.OpacityTransition>
+                <ScalarTransition Duration="0:0:0.12" />
+            </Grid.OpacityTransition>
+            <Border
+                Margin="16"
+                BorderBrush="{ThemeResource AccentBrush}"
+                BorderThickness="1.5"
+                CornerRadius="{StaticResource RadiusLarge}">
+                <StackPanel
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="12">
+                    <FontIcon
+                        FontSize="{StaticResource IconStatus}"
+                        Foreground="{ThemeResource AccentBrush}"
+                        Glyph="&#xE768;"
+                        Style="{StaticResource IconGlyphStyle}" />
+                    <TextBlock
+                        x:Name="DropText"
+                        HorizontalTextAlignment="Center"
+                        Style="{StaticResource SubtitleTextStyle}"
+                        Text="Drop to play" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

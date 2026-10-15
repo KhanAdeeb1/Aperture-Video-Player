@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The video surface: renders libmpv frames into a DXGI composition swap chain that the
+    app shows in a XAML SwapChainPanel, so Aperture's own controls draw over the video.
+    The GPU path runs libmpv's OpenGL renderer on ANGLE (OpenGL ES on Direct3D 11); the
+    fallback uses libmpv's software renderer. Windows only, but has no XAML dependency, so
+    it also compiles on Linux with EnableWindowsTargeting. See docs/architecture.md §4.2.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>Aperture.Video</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct3D11" />
+    <PackageReference Include="Vortice.DXGI" />
+    <PackageReference Include="Avalonia.Angle.Windows.Natives" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aperture.Playback.Mpv\Aperture.Playback.Mpv.csproj" />
+  </ItemGroup>
+
+</Project>

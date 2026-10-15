@@ -91,6 +91,23 @@ function Find-ByName($p, [string] $name, [int] $seconds = 5) {
     return $null
 }
 
+# Menus and flyouts can open in their own popup window; look through every window of the app.
+function Find-InApp($p, [string] $id, [int] $seconds = 5) {
+    $condition = New-Object System.Windows.Automation.AndCondition(
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)),
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $id)))
+    $windows = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        foreach ($window in [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $windows)) {
+            $element = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+            if ($element) { return $element }
+        }
+        Start-Sleep -Milliseconds 300
+    }
+    throw "UI element '$id' not found in any of Aperture's windows"
+}
+
 function Invoke-Element($element) { $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
 function Get-Range($element) { $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).Current }
 function Set-Range($element, [double] $value) { $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).SetValue($value) }
@@ -141,12 +158,42 @@ function Write-CrashDetails {
     Get-WinEvent -LogName Application -MaxEvents 10 -ErrorAction SilentlyContinue |
         Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error' } |
         ForEach-Object { Write-Host "  event: $($_.Message)" }
+    Write-DumpAnalysis
+}
+
+# A crash inside WinUI (exception 0xc000027b) never reaches Aperture's own handler or log, and
+# the event log names only the module. Windows Error Reporting keeps a dump of such a crash,
+# and the debugger's analysis of it names the stowed exception (HRESULT, message and stack).
+$dumpDir = Join-Path $OutDir 'dumps'
+New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+try {
+    $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\Aperture.exe'
+    New-Item -Path $key -Force | Out-Null
+    Set-ItemProperty -Path $key -Name DumpFolder -Value $dumpDir -Type ExpandString
+    Set-ItemProperty -Path $key -Name DumpType -Value 2 -Type DWord
+    Set-ItemProperty -Path $key -Name DumpCount -Value 3 -Type DWord
+} catch { Write-Host "Crash dumps not enabled: $($_.Exception.Message)" }
+
+function Write-DumpAnalysis {
+    Start-Sleep -Seconds 5  # Windows Error Reporting writes the dump after the process is gone.
+    $dump = Get-ChildItem $dumpDir -Filter *.dmp -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $dump) { Write-Host '  no crash dump'; return }
+    $cdb = @("${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64\cdb.exe", "$env:ProgramFiles\Windows Kits\10\Debuggers\x64\cdb.exe") |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $cdb) { Write-Host "  crash dump $($dump.Name) written, but no debugger to read it" }
+    else {
+        $analysis = & $cdb -z $dump.FullName -c '.symfix; .reload; !analyze -v; q' 2>&1 | Out-String
+        $analysis | Set-Content (Join-Path $OutDir "crash-$($dump.BaseName).txt")
+        $analysis -split "`n" | Select-String -Pattern 'STOWED|Stowed|HRESULT|ExceptionCode|EXCEPTION_|ERROR_CODE|Message|SYMBOL_NAME|FAILURE_BUCKET|STACK_TEXT|!' |
+            Select-Object -First 80 | ForEach-Object { Write-Host "  dump: $($_.Line.TrimEnd())" }
+    }
+    Remove-Item $dump.FullName -Force -ErrorAction SilentlyContinue
 }
 
 function Step([string] $name, [scriptblock] $body) {
     Write-Host "=== $name"
     try { & $body }
-    catch { $failures.Add("${name}: $($_.Exception.Message)"); Write-Warning "${name} failed: $($_.Exception.Message)"; Write-CrashDetails }
+    catch { $failures.Add("${name}: $($_.Exception.Message)"); Note "FAILED ${name}: $($_.Exception.Message)"; Write-Warning "${name} failed: $($_.Exception.Message)"; Write-CrashDetails }
     Get-Process -Name Aperture -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
@@ -705,7 +752,7 @@ Step 'Episodes' {
     Move-MouseToCenter $p
     Invoke-Element (Find-Element $p 'MoreButton')
     Start-Sleep -Milliseconds 800
-    Invoke-Element (Find-Element $p 'SegmentsMenuItem' 3)
+    Invoke-Element (Find-InApp $p 'SegmentsMenuItem' 5)
     Start-Sleep -Seconds 1
     Find-Element $p 'ConfirmSegmentButton' 3 | Out-Null
     Move-MouseAway

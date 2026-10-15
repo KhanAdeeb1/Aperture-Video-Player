@@ -1,3 +1,4 @@
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
 namespace Aperture.App.Views;
@@ -21,7 +22,13 @@ internal sealed class CardGrid
         _layout = layout;
         _minimum = layout.MinItemWidth;
         _column = _minimum;
-        repeater.ElementPrepared += (_, e) => e.Element.Width = _column;
+        repeater.ElementPrepared += (_, e) =>
+        {
+            if (e.Element is FrameworkElement card)
+            {
+                card.Width = _column;
+            }
+        };
         repeater.SizeChanged += (_, e) =>
         {
             // Only width matters; new rows change the height, and reacting to that would loop.
@@ -62,7 +69,7 @@ internal sealed class CardGrid
         var count = _repeater.ItemsSourceView?.Count ?? 0;
         for (var i = 0; i < count; i++)
         {
-            if (_repeater.TryGetElement(i) is { } element)
+            if (_repeater.TryGetElement(i) is FrameworkElement element)
             {
                 element.Width = column;
             }

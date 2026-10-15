@@ -256,7 +256,11 @@ public sealed class VideoPresenter : IDisposable
         using var dxgiDevice = _device.QueryInterface<IDXGIDevice>();
         using var adapter = dxgiDevice.GetAdapter();
         using var adapter1 = adapter.QueryInterfaceOrNull<IDXGIAdapter1>();
-        var software = adapter1 is not null && (adapter1.Description1.Flags & AdapterFlags.Software) != 0;
+        // WARP reports the software flag; the Microsoft Basic Render Driver (what Windows uses
+        // when no GPU driver is installed, as in most VMs) presents as hardware, so it is
+        // recognised by its vendor and device IDs.
+        var description1 = adapter1?.Description1;
+        var software = description1 is { } d && ((d.Flags & AdapterFlags.Software) != 0 || (d.VendorId == 0x1414 && d.DeviceId == 0x8C));
         return (adapter.Description.Description.TrimEnd('\0').Trim(), software);
     }
 

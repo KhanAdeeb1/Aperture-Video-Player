@@ -8,6 +8,18 @@ namespace Aperture.Server.Tests;
 public class ControlAndCertificateTests
 {
     [Fact]
+    public void Addresses_of_adapters_with_a_gateway_come_first_and_virtual_switches_are_left_out()
+    {
+        var wifi = System.Net.IPAddress.Parse("192.168.1.20");
+        var hyperV = System.Net.IPAddress.Parse("172.25.240.1");
+        var all = new[] { hyperV, wifi };
+
+        Assert.Equal([wifi], Aperture.Server.Hosting.SetupEndpoints.PreferRouted(all, new HashSet<System.Net.IPAddress> { wifi }));
+        // With no gateway anywhere (an isolated network), nothing is hidden.
+        Assert.Equal(all, Aperture.Server.Hosting.SetupEndpoints.PreferRouted(all, new HashSet<System.Net.IPAddress>()));
+    }
+
+    [Fact]
     public async Task Control_requests_need_the_token_and_stop_the_server_on_their_own()
     {
         await using var test = await TestServer.StartAsync();

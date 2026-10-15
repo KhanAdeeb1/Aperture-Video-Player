@@ -63,12 +63,59 @@ internal static class SetupEndpoints
     /// <summary>Addresses devices can use to reach this computer, best first.</summary>
     public static IReadOnlyList<string> Addresses(int port, string scheme, bool allowVpn)
     {
-        return CertificateAuthority.LocalAddresses()
+        var allowed = CertificateAuthority.LocalAddresses()
             .Where(a => NetworkAccess.IsAllowed(a, allowVpn) && NetworkAccess.Classify(a) != NetworkZone.Loopback)
+            .ToList();
+        return PreferRouted(allowed, RoutedAddresses())
             .OrderBy(a => NetworkAccess.Classify(a))
             .ThenBy(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 0 : 1)
             .Select(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"{scheme}://[{a}]:{port}" : $"{scheme}://{a}:{port}")
             .ToList();
+    }
+
+    /// <summary>
+    /// Keeps the addresses of adapters that have a default gateway (the Wi-Fi or Ethernet the
+    /// phone is on) when there are any. Adapters without one are virtual switches for Hyper-V,
+    /// WSL, Docker or virtual machines, which a phone can't reach; listing them first would put
+    /// a useless address on the Copy address button. They still answer if someone types them.
+    /// </summary>
+    internal static IReadOnlyList<IPAddress> PreferRouted(IReadOnlyList<IPAddress> addresses, IReadOnlySet<IPAddress> routed)
+    {
+        var preferred = addresses.Where(routed.Contains).ToList();
+        return preferred.Count > 0 ? preferred : addresses;
+    }
+
+    private static HashSet<IPAddress> RoutedAddresses()
+    {
+        var routed = new HashSet<IPAddress>();
+        try
+        {
+            foreach (var adapter in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (adapter.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up)
+                {
+                    continue;
+                }
+
+                var properties = adapter.GetIPProperties();
+                if (!properties.GatewayAddresses.Any(g => !g.Address.Equals(IPAddress.Any) && !g.Address.Equals(IPAddress.IPv6Any)))
+                {
+                    continue;
+                }
+
+                foreach (var unicast in properties.UnicastAddresses)
+                {
+                    var address = unicast.Address;
+                    routed.Add(address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 && address.ScopeId != 0 ? new IPAddress(address.GetAddressBytes()) : address);
+                }
+            }
+        }
+        catch (System.Net.NetworkInformation.NetworkInformationException)
+        {
+            // No adapter information: every address is listed.
+        }
+
+        return routed;
     }
 
     private static async Task HandleControlAsync(HttpContext http, ServerContext server, ILogger log, string path)

@@ -27,7 +27,6 @@
         x:Name="Root"
         Background="{ThemeResource SurfaceVideoBrush}"
         PointerExited="OnRootPointerExited"
-        PointerMoved="OnRootPointerMoved"
         SizeChanged="OnRootSizeChanged">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="StatusStates">

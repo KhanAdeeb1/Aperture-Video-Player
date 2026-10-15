@@ -449,8 +449,14 @@ Step 'FFV1 plays' {
 Step 'Tracks, subtitles, info, picture shape, speed' {
     $p = Start-Aperture (Media 'Night Market.mkv')
     Start-Sleep -Seconds 3
-    Send-Keys $p 'c'
-    Start-Sleep -Milliseconds 600
+    # C steps through the subtitle tracks and off; stop on an English track so 41 shows one.
+    for ($i = 0; $i -lt 4; $i++) {
+        Send-Keys $p 'c'
+        Start-Sleep -Milliseconds 600
+        $toast = (Find-Element $p 'ToastText').Current.Name
+        if ($toast -match '(?i)eng') { break }
+    }
+    Note "Subtitle toast after C: $toast"
     Save-Shot $p '40-subtitles-toast'
     Move-MouseAway
     Start-Sleep -Seconds 5

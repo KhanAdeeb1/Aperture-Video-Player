@@ -451,12 +451,16 @@ public sealed partial class PlayerView
     {
         var side = _isMini ? 8 : 24;
         var bottom = _isMini ? 8.0 : 32.0;
+        var lift = 0.0;
         if (_overlay.IsVisible && ControlsPanel.Visibility == Visibility.Visible && ControlsPanel.ActualHeight > 0)
         {
-            bottom = ControlsPanel.ActualHeight + ControlsPanel.Margin.Bottom + 12;
+            lift = Math.Max(0, ControlsPanel.ActualHeight + ControlsPanel.Margin.Bottom + 12 - bottom);
         }
 
+        // The lift is a translation that moves with the controls' 200 ms fade (set up in the
+        // constructor), so Skip and the next-episode card never sit on the fading timeline.
         CueArea.Margin = new Thickness(side, 0, side, bottom);
+        CueArea.Translation = new System.Numerics.Vector3(0, (float)-lift, 0);
     }
 
     // ===== This show =====

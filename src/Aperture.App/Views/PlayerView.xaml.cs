@@ -79,6 +79,9 @@ public sealed partial class PlayerView : UserControl
     public PlayerView()
     {
         InitializeComponent();
+        Root.AddHandler(PointerMovedEvent, new PointerEventHandler(OnRootPointerMoved), handledEventsToo: true);
+        CueArea.TranslationTransition = new Vector3Transition { Duration = Theme.Motion.Medium };
+        ControlsPanel.SizeChanged += (_, _) => UpdateCueLift();
 
         var dispatcher = DispatcherQueue.GetForCurrentThread();
         _ticker = dispatcher.CreateTimer();
@@ -764,6 +767,11 @@ public sealed partial class PlayerView : UserControl
         var fileName = _path is null ? string.Empty : Path.GetFileName(_path);
         ErrorRemoveButton.Visibility = Visibility.Collapsed;
         ErrorRetryButton.Visibility = _path is not null && CanRetry(failure, engineMissing) ? Visibility.Visible : Visibility.Collapsed;
+
+        // A missing file, or one that isn't a video at all, is not a fault worth reporting.
+        var notAFault = failure.Kind == PlaybackFailureKind.NotFound
+            || (failure.Kind == PlaybackFailureKind.Unsupported && _path is not null && !MediaFileTypes.IsPlayableFile(_path));
+        ErrorCopyButton.Visibility = notAFault ? Visibility.Collapsed : Visibility.Visible;
         VisualStateManager.GoToState(this, "CriticalTone", false);
 
         switch (failure.Kind)
@@ -1658,15 +1666,22 @@ public sealed partial class PlayerView : UserControl
         UpdateCueLift();
     }
 
+    // Registered with handledEventsToo (constructor), so moves over the timeline and buttons count.
     private void OnRootPointerMoved(object sender, PointerRoutedEventArgs e)
     {
         _pointerInside = true;
+
+        // Decided from where the pointer is, not only from Entered and Exited: those are missed
+        // when the pointer jumps (a tablet pen, a remote desktop, an automation tool) or when the
+        // controls were hidden, and not hit-testable, as the pointer arrived over them.
+        _pointerOnControls = IsOverControls(e);
         _overlay.Poke();
     }
 
     private void OnRootPointerExited(object sender, PointerRoutedEventArgs e)
     {
         _pointerInside = false;
+        _pointerOnControls = false;
         _cursor.Show();
         if (_engine?.Status == PlaybackStatus.Playing)
         {
@@ -1678,19 +1693,31 @@ public sealed partial class PlayerView : UserControl
 
     private void OnControlsPointerExited(object sender, PointerRoutedEventArgs e)
     {
-        // Leaving a part inside the controls (the timeline's thumb, a button) bubbles up here
-        // too; the pointer has only left the controls when it is outside the whole panel.
-        if (sender is FrameworkElement panel)
+        // Leaving a part inside the controls (the timeline's thumb, a button) bubbles up here too.
+        _pointerOnControls = IsOverControls(e);
+        if (!_pointerOnControls)
         {
+            _overlay.Poke();
+        }
+    }
+
+    private bool IsOverControls(PointerRoutedEventArgs e)
+    {
+        foreach (var panel in (FrameworkElement[])[ControlsPanel, NextUpCard, SegmentsPanel, AdjustPanel, CastPanel, BookmarksPanel])
+        {
+            if (panel.Visibility != Visibility.Visible || panel.ActualWidth <= 0)
+            {
+                continue;
+            }
+
             var point = e.GetCurrentPoint(panel).Position;
             if (point.X >= 0 && point.Y >= 0 && point.X < panel.ActualWidth && point.Y < panel.ActualHeight)
             {
-                return;
+                return true;
             }
         }
 
-        _pointerOnControls = false;
-        _overlay.Poke();
+        return false;
     }
 
     private void OnControlsGotFocus(object sender, RoutedEventArgs e) =>

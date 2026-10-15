@@ -494,7 +494,8 @@ Step 'Library' {
     [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
     Start-Sleep -Seconds 2
     # Typing a path and Enter opens that folder in the picker; its commit button then picks it.
-    $pickerHandle = [Win]::FindWindow('#32770', $null)
+    # ([NullString]::Value: PowerShell would pass $null to a string parameter as "".)
+    $pickerHandle = [Win]::FindWindow('#32770', [NullString]::Value)
     if ($pickerHandle -ne [IntPtr]::Zero) {
         $picker = [System.Windows.Automation.AutomationElement]::FromHandle($pickerHandle)
         $select = $picker.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
@@ -504,7 +505,7 @@ Step 'Library' {
         Invoke-Element $select
         Start-Sleep -Seconds 2
     }
-    if ([Win]::FindWindow('#32770', $null) -ne [IntPtr]::Zero) { throw 'the folder picker is still open' }
+    if ([Win]::FindWindow('#32770', [NullString]::Value) -ne [IntPtr]::Zero) { throw 'the folder picker is still open' }
     Save-Shot $p '61-add-folder-kind'
     Send-Keys $p '{ENTER}'
     Start-Sleep -Milliseconds 800

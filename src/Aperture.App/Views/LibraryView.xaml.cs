@@ -20,6 +20,7 @@ public sealed partial class LibraryView : UserControl
     private LibrarySnapshot _snapshot = LibrarySnapshot.Empty;
     private string _query = string.Empty;
     private bool _loaded;
+    private bool _scanEndedSinceLoad;
     private bool _showing;
 
     public LibraryView()
@@ -73,7 +74,13 @@ public sealed partial class LibraryView : UserControl
         _thumbnails = thumbnails;
         _actions = new CardActionHandler(services, thumbnails);
         var dispatcher = DispatcherQueue;
-        services.Library.ProgressChanged += (_, progress) => dispatcher.TryEnqueue(() => ShowProgress(progress));
+        services.Library.ProgressChanged += (_, progress) => dispatcher.TryEnqueue(() =>
+        {
+            // A scan just ended; until the library is read again, the folders' scan state shown
+            // here predates it.
+            _scanEndedSinceLoad |= progress is null;
+            ShowProgress(progress);
+        });
         services.Library.Changed += (_, _) => dispatcher.TryEnqueue(() =>
         {
             if (_showing)
@@ -139,6 +146,7 @@ public sealed partial class LibraryView : UserControl
             return;
         }
 
+        _scanEndedSinceLoad = false;
         try
         {
             _snapshot = await _services.Library.LoadAsync();
@@ -221,6 +229,11 @@ public sealed partial class LibraryView : UserControl
 
     private string LastScanText()
     {
+        if (_scanEndedSinceLoad)
+        {
+            return string.Empty;
+        }
+
         var last = _snapshot.Folders.Select(f => f.LastScanCompletedUtc).Where(t => t is not null).Max();
         // While a scan is queued or running it is the one finishing the job, so the warning would
         // only contradict the progress about to appear. A cancelled scan refreshes the view again.

@@ -105,6 +105,8 @@ public sealed partial class MainWindow : Window
         var fullPath = Path.GetFullPath(path);
         ShowScreen(Screen.Player);
         AppTitleBar.Title = MediaFileTypes.TitleFromPath(fullPath);
+        // Keyboard focus goes to the player so playback shortcuts work straight away.
+        PlayerPage.Focus(FocusState.Programmatic);
         await PlayerPage.OpenAsync(fullPath);
         AppTitleBar.Title = PlayerPage.Title;
     }

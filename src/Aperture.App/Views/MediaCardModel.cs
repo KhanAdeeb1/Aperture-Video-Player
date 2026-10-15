@@ -12,7 +12,7 @@ internal sealed class MediaCardModel(HistoryEntry entry, bool showProgress, Date
     public string Title => Entry.Title;
 
     /// <summary>Progress from 0 to 1, or null when the card should not show progress.</summary>
-    public double? Progress { get; } = showProgress ? Entry.Progress : null;
+    public double? Progress { get; } = showProgress ? entry.Progress : null;
 
     /// <summary>"12 min left" on Continue Watching; "42 min · Yesterday" elsewhere.</summary>
     public string Meta { get; } = showProgress

@@ -9,7 +9,10 @@
     x:Class="Aperture.App.Views.PlayerView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:Aperture.App.Views">
+    xmlns:local="using:Aperture.App.Views"
+    AutomationProperties.Name="Video player"
+    IsTabStop="True"
+    UseSystemFocusVisuals="False">
 
     <UserControl.Resources>
         <local:SecondsToClockConverter x:Key="SecondsToClock" />

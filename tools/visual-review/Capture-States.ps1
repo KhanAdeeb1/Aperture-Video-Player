@@ -34,6 +34,7 @@ public static class Win {
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hwnd, int x, int y, int w, int h, bool repaint);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int cmd);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out RECT rect, int size);
 }
 "@
@@ -498,14 +499,17 @@ Step 'Library' {
     $pickerHandle = [Win]::FindWindow('#32770', [NullString]::Value)
     if ($pickerHandle -ne [IntPtr]::Zero) {
         $picker = [System.Windows.Automation.AutomationElement]::FromHandle($pickerHandle)
-        # The commit button carries the text Aperture gives the picker.
+        # The commit button carries the text Aperture gives the picker. If UI Automation
+        # cannot see it, send the dialog the same command the button sends (IDOK).
         $select = $picker.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-            (New-Object System.Windows.Automation.AndCondition(
-                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Add to library')),
-                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)))))
-        if (-not $select) { throw 'the folder picker has no commit button' }
-        Note "Folder picker commit button: $($select.Current.Name)"
-        Invoke-Element $select
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Add to library')))
+        if ($select) {
+            Note "Folder picker commit button: $($select.Current.ControlType.ProgrammaticName)"
+            try { Invoke-Element $select } catch { [Win]::PostMessage($pickerHandle, 0x0111, [IntPtr]1, [IntPtr]::Zero) | Out-Null }
+        } else {
+            Note 'Folder picker commit button not visible to UI Automation; sending IDOK'
+            [Win]::PostMessage($pickerHandle, 0x0111, [IntPtr]1, [IntPtr]::Zero) | Out-Null  # WM_COMMAND, IDOK
+        }
         Start-Sleep -Seconds 2
     }
     if ([Win]::FindWindow('#32770', [NullString]::Value) -ne [IntPtr]::Zero) { throw 'the folder picker is still open' }

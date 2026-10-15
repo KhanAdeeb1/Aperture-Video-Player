@@ -566,7 +566,7 @@ Step 'Library' {
     Start-Sleep -Seconds 1
     Save-Shot $p '66-card-menu'
     $check = (Get-Root $p).FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Check details…')))
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, ("Check details" + [char]0x2026))))
     if (-not $check) { throw 'the card menu has no Check details item' }
     Invoke-Element $check
     Start-Sleep -Seconds 1

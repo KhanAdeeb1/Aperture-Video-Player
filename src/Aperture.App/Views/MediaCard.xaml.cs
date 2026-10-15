@@ -155,7 +155,8 @@ public sealed partial class MediaCard : UserControl
     private void OnArtworkSizeChanged(object sender, SizeChangedEventArgs e)
     {
         var height = Math.Round(e.NewSize.Width * 9 / 16);
-        if (Math.Abs(Artwork.Height - height) > 0.5)
+        // Height starts unset (NaN), and NaN never compares as different.
+        if (double.IsNaN(Artwork.Height) || Math.Abs(Artwork.Height - height) > 0.5)
         {
             Artwork.Height = height;
         }

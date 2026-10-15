@@ -124,10 +124,18 @@ function Set-WindowSize($p, [int] $w, [int] $h) {
     Start-Sleep -Milliseconds 1200
 }
 
+function Write-CrashDetails {
+    $log = Join-Path $dataDir 'Logs\aperture.log'
+    if (Test-Path $log) { Get-Content $log -Tail 40 | ForEach-Object { Write-Host "  log: $_" } }
+    Get-WinEvent -LogName Application -MaxEvents 10 -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error' } |
+        ForEach-Object { Write-Host "  event: $($_.Message)" }
+}
+
 function Step([string] $name, [scriptblock] $body) {
     Write-Host "=== $name"
     try { & $body }
-    catch { $failures.Add("${name}: $($_.Exception.Message)"); Write-Warning "${name} failed: $($_.Exception.Message)" }
+    catch { $failures.Add("${name}: $($_.Exception.Message)"); Write-Warning "${name} failed: $($_.Exception.Message)"; Write-CrashDetails }
     Get-Process -Name Aperture -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 

@@ -17,6 +17,25 @@ internal static class AppLog
     public static void Initialize(AppDataLocation location) =>
         _logFile = Path.Combine(location.LogsDirectory, "aperture.log");
 
+    /// <summary>
+    /// Points the log at the data folder before anything else runs, so failures while
+    /// loading the interface itself are recorded. Problems here are ignored on purpose:
+    /// startup reports them properly a moment later in <see cref="AppServices.CreateAsync"/>.
+    /// </summary>
+    public static void InitializeEarly()
+    {
+        try
+        {
+            var location = AppDataLocation.Resolve();
+            location.EnsureCreated();
+            Initialize(location);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+        {
+            Debug.WriteLine($"Early log setup failed: {error.Message}");
+        }
+    }
+
     public static void Error(string message, Exception? exception = null) => Write("ERROR", message, exception);
 
     public static void Warning(string message, Exception? exception = null) => Write("WARN", message, exception);
@@ -25,7 +44,7 @@ internal static class AppLog
     {
         var line = string.Create(
             CultureInfo.InvariantCulture,
-            $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {level} {message}{(exception is null ? string.Empty : $" | {exception.GetType().Name}: {exception.Message} (0x{exception.HResult:X8})")}");
+            $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {level} {message}{(exception is null ? string.Empty : $" | {exception.GetType().Name}: {exception.Message} (0x{exception.HResult:X8}){(level == "ERROR" ? Environment.NewLine + exception : string.Empty)}")}");
         Debug.WriteLine(line);
 
         var file = _logFile;

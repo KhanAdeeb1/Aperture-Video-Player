@@ -49,7 +49,14 @@ jobs:
           $p = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 15
           $p.Refresh()
-          if ($p.HasExited) { throw "Aperture exited during startup with code $($p.ExitCode)" }
+          if ($p.HasExited) {
+            $log = Join-Path $env:APERTURE_DATA_DIR "Logs/aperture.log"
+            if (Test-Path $log) { Get-Content $log }
+            Get-WinEvent -LogName Application -MaxEvents 10 -ErrorAction SilentlyContinue |
+              Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error' } |
+              ForEach-Object { $_.Message }
+            throw "Aperture exited during startup with code $($p.ExitCode)"
+          }
           if ($p.MainWindowHandle -eq 0) { Stop-Process -Id $p.Id -Force; throw "Aperture is running but has no main window" }
           Write-Host "Aperture started and opened its window: '$($p.MainWindowTitle)'"
           Stop-Process -Id $p.Id -Force

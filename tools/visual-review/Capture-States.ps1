@@ -1079,9 +1079,11 @@ Step 'Casting' {
         Save-Shot $p '95-cast-picker-server-off'
         Invoke-Element (Find-Element $p 'CastStartServerButton')
         $renderer = $null
-        $deadline = (Get-Date).AddSeconds(40)
+        $deadline = (Get-Date).AddSeconds(45)
         while (-not $renderer -and (Get-Date) -lt $deadline) {
-            try { $renderer = Find-Element $p 'CastRenderer' 3 } catch { }
+            # A search takes a little over 3 s; wait longer than that before searching again,
+            # since Search again clears the list.
+            try { $renderer = Find-Element $p 'CastRenderer' 10 } catch { }
             if (-not $renderer) {
                 try { $search = Find-Element $p 'CastSearchButton' 1; if ($search.Current.IsEnabled -and -not $search.Current.IsOffscreen) { Invoke-Element $search } } catch { }
             }

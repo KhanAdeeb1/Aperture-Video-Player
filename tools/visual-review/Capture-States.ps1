@@ -111,6 +111,8 @@ function Find-InApp($p, [string] $id, [int] $seconds = 5) {
 function Invoke-Element($element) {
     $pattern = $null
     if (-not $element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref] $pattern)) {
+        # A toggle menu item does not always offer Invoke; toggling it is the same click.
+        if ($element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref] $pattern)) { $pattern.Toggle(); return }
         throw "'$($element.Current.AutomationId)' ($($element.Current.ControlType.ProgrammaticName), '$($element.Current.Name)') cannot be invoked"
     }
     $pattern.Invoke()

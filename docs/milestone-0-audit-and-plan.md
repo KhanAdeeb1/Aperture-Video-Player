@@ -30,7 +30,7 @@ After this milestone, what actually works:
 | Functionality | Status |
 |---|---|
 | `Aperture.Core.AppDataLocation`: resolves `%LOCALAPPDATA%\Aperture`, honours an absolute `APERTURE_DATA_DIR` override, rejects relative overrides, creates folders | Working; 7 unit tests pass on Linux (run here) |
-| `Aperture.App`: empty WinUI 3 window with charcoal theme and design tokens | Written; compiled only by Windows CI (see milestone report for the result). Not launched or visually reviewed |
+| `Aperture.App`: empty WinUI 3 window with charcoal theme and design tokens | Builds in Windows CI for x64 and ARM64; the x64 build launches and opens its window in a CI smoke test. Not visually reviewed (no screenshot yet) |
 | CI workflow | Runs core tests on Linux and Windows, builds the app for x64 and ARM64 |
 
 ## 3. Proposed architecture

@@ -483,3 +483,4 @@ $RECYCLE.BIN/
 
 # Aperture: native binaries (libmpv, ffprobe) are fetched by script, never committed
 /third_party/bin/
+artifacts/

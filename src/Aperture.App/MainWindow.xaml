@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The single Aperture window. Home, Library and Settings sit below a 48 px title bar
+    The single Aperture window. Home, Library, YouTube and Settings sit below a 48 px title bar
     that carries the wordmark, search and the global actions. The player fills the
     whole window, and the title bar becomes part of its fading overlay.
 -->
@@ -29,6 +29,9 @@
             <views:HomeView x:Name="HomePage" />
             <views:LibraryView x:Name="LibraryPage" Visibility="Collapsed" />
             <views:SettingsView x:Name="SettingsPage" Visibility="Collapsed" />
+            <views:YouTubeView x:Name="YouTubePage" Visibility="Collapsed" />
+            <!-- Under the title bar, not behind it: nothing of Aperture's is drawn over YouTube's player. -->
+            <views:YouTubePlayerView x:Name="YouTubePlayerPage" Visibility="Collapsed" />
 
             <!-- Startup failure: the data folder or database could not be opened. -->
             <StackPanel
@@ -114,6 +117,7 @@
                     AutomationProperties.Name="Search your library and played videos"
                     PlaceholderText="Search"
                     QueryIcon="Find"
+                    QuerySubmitted="OnSearchQuerySubmitted"
                     TextChanged="OnSearchTextChanged"
                     ToolTipService.ToolTip="Search (Ctrl+F)" />
             </TitleBar.Content>
@@ -124,6 +128,18 @@
                     VerticalAlignment="Center"
                     Orientation="Horizontal"
                     Spacing="4">
+                    <Button
+                        x:Name="YouTubeButton"
+                        AutomationProperties.AutomationId="YouTubeButton"
+                        AutomationProperties.Name="YouTube"
+                        Click="OnYouTubeClick"
+                        Style="{StaticResource QuietButtonStyle}"
+                        ToolTipService.ToolTip="YouTube">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE714;" Style="{StaticResource IconGlyphStyle}" />
+                            <TextBlock Text="YouTube" />
+                        </StackPanel>
+                    </Button>
                     <Button
                         x:Name="LibraryButton"
                         AutomationProperties.AutomationId="LibraryButton"

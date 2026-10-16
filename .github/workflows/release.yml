@@ -1,0 +1,122 @@
+name: Release
+
+# Builds the installers and portable zips for both platforms, runs the full soak test
+# (50 open/close cycles and two hours of 1080p playback by default) and, for a pushed
+# tag such as v0.1.0, creates a *draft* GitHub release with the files attached. A person
+# reviews the draft and publishes it; nothing is published automatically.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Minutes of continuous playback in the soak test
+        default: '120'
+      cycles:
+        description: Open/close cycles in the soak test
+        default: '50'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package (${{ matrix.platform }})
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x64, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content -Raw Directory.Build.props)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if ("v$version" -ne '${{ github.ref_name }}') { throw "Tag ${{ github.ref_name }} does not match <Version>$version</Version> in Directory.Build.props" }
+      - name: Test before packaging
+        run: |
+          dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj -c Release
+          dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj -c Release
+      - name: Install Inno Setup if the runner lacks it
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Build the installer and portable zip
+        shell: pwsh
+        run: tools/Build-Release.ps1 -Platform ${{ matrix.platform }} -OutDir "$env:RUNNER_TEMP/release"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aperture-${{ matrix.platform }}
+          path: |
+            ${{ runner.temp }}/release/*.exe
+            ${{ runner.temp }}/release/*.zip
+            ${{ runner.temp }}/release/SHA256SUMS-*.txt
+          retention-days: 30
+          compression-level: 0
+
+  soak:
+    name: Soak test (x64)
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: aperture-x64
+          path: ${{ runner.temp }}/release
+      - name: Unpack the portable build
+        shell: pwsh
+        run: Expand-Archive (Get-ChildItem "$env:RUNNER_TEMP/release/*-portable.zip").FullName "$env:RUNNER_TEMP/app"
+      - name: Make a long, high-bitrate 1080p video
+        shell: bash
+        run: |
+          choco install ffmpeg -y --no-progress > /dev/null
+          minutes=$(( ${{ github.event.inputs.minutes || '120' }} + 10 ))
+          cd "$RUNNER_TEMP"
+          # Five minutes of moving 1080p60 at about 20 Mbit/s with 5.1 sound, repeated without re-encoding.
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i "testsrc2=s=1920x1080:r=60" -f lavfi -i "sine=frequency=220:sample_rate=48000" \
+            -t 300 -af "volume=0.03,pan=5.1|c0=c0|c1=c0|c2=c0|c3=c0|c4=c0|c5=c0" \
+            -c:v libx264 -preset veryfast -b:v 20M -maxrate 20M -bufsize 40M -g 120 -pix_fmt yuv420p \
+            -c:a ac3 -b:a 448k segment.mkv
+          ffmpeg -hide_banner -loglevel error -y -stream_loop -1 -i segment.mkv -t $(( minutes * 60 )) -c copy "Soak 1080p60.mkv"
+          ls -l "Soak 1080p60.mkv"
+      - name: Open and close, then play continuously
+        shell: powershell
+        run: >
+          tools/packaging/Test-Soak.ps1
+          -Exe "$env:RUNNER_TEMP/app/Aperture.exe"
+          -Video "$env:RUNNER_TEMP/Soak 1080p60.mkv"
+          -OutDir "$env:RUNNER_TEMP/soak"
+          -Minutes ${{ github.event.inputs.minutes || '120' }}
+          -Cycles ${{ github.event.inputs.cycles || '50' }}
+      - name: Show samples
+        if: always()
+        shell: pwsh
+        run: Get-Content "$env:RUNNER_TEMP/soak/soak.csv" -ErrorAction SilentlyContinue
+
+  draft-release:
+    name: Draft GitHub release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [package, soak]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Create the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat release/SHA256SUMS-*.txt > release/SHA256SUMS.txt
+          rm release/SHA256SUMS-*.txt
+          gh release create "${{ github.ref_name }}" release/* --draft --title "Aperture ${{ github.ref_name }}" --notes-file docs/release-notes.md

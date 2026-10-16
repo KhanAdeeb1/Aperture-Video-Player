@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+  Hosts YouTube's embedded player for Aperture, through the documented IFrame Player API
+  (https://developers.google.com/youtube/iframe_api_reference). Aperture serves this page from
+  https://com.aperture.player/ (a WebView2 virtual host), so every request the player makes
+  carries that origin as its Referer: YouTube's Required Minimum Functionality asks embedded
+  players in apps to identify themselves this way, and refuses ones that don't (error 153).
+
+  The page draws nothing of its own over the player. It only relays the player's state to
+  Aperture (for Continue Watching and autoplay) and takes three commands: load, pause, stop.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>YouTube player</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    #player { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  </style>
+</head>
+<body>
+  <div id="player"></div>
+  <script>
+    'use strict';
+    const host = window.chrome && window.chrome.webview;
+    const send = message => { if (host) host.postMessage(message); };
+    let player = null;
+    let ready = false;
+    let pending = null;
+    let ticker = 0;
+
+    function position() {
+      return { time: player.getCurrentTime() || 0, duration: player.getDuration() || 0 };
+    }
+
+    function create(command) {
+      player = new YT.Player('player', {
+        width: '100%',
+        height: '100%',
+        videoId: command.id,
+        playerVars: {
+          autoplay: command.autoplay ? 1 : 0,
+          start: Math.floor(command.start || 0),
+          playsinline: 1,
+          origin: location.origin,
+          widget_referrer: location.origin + '/'
+        },
+        events: {
+          onReady: () => {
+            ready = true;
+            send({ type: 'ready' });
+            if (pending) { const next = pending; pending = null; apply(next); }
+          },
+          onStateChange: e => {
+            send(Object.assign({ type: 'state', state: e.data }, position()));
+            clearInterval(ticker);
+            if (e.data === YT.PlayerState.PLAYING) {
+              ticker = setInterval(() => send(Object.assign({ type: 'time' }, position())), 1000);
+            }
+          },
+          onError: e => send({ type: 'error', code: e.data }),
+          onAutoplayBlocked: () => send({ type: 'autoplayBlocked' })
+        }
+      });
+    }
+
+    function apply(command) {
+      if (!command || typeof command.cmd !== 'string') return;
+      if (command.cmd === 'load') {
+        if (!player) { if (window.YT && YT.Player) create(command); else pending = command; return; }
+        if (!ready) { pending = command; return; }
+        const options = { videoId: command.id, startSeconds: Math.floor(command.start || 0) };
+        if (command.autoplay) player.loadVideoById(options); else player.cueVideoById(options);
+        return;
+      }
+      if (!ready) return;
+      if (command.cmd === 'pause') player.pauseVideo();
+      else if (command.cmd === 'stop') { clearInterval(ticker); player.stopVideo(); }
+    }
+
+    if (host) host.addEventListener('message', e => apply(e.data));
+
+    window.onYouTubeIframeAPIReady = () => {
+      send({ type: 'api' });
+      if (pending && !player) { const first = pending; pending = null; create(first); }
+    };
+
+    const script = document.createElement('script');
+    script.src = 'https://www.youtube.com/iframe_api';
+    script.onerror = () => send({ type: 'apiFailed' });
+    document.head.appendChild(script);
+  </script>
+</body>
+</html>

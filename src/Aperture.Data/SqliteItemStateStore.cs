@@ -13,7 +13,7 @@ public sealed class SqliteItemStateStore(ApertureDatabase database) : IItemState
         await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT audio_track, subtitle_track, subtitles_off, subtitle_delay_ms, audio_delay_ms, aspect, speed
+            SELECT audio_track, subtitle_track, subtitles_off, subtitle_delay_ms, audio_delay_ms, aspect, speed, clear_dialogue, even_volume
             FROM item_state WHERE path = $path;
             """;
         command.Parameters.AddWithValue("$path", path);
@@ -30,7 +30,8 @@ public sealed class SqliteItemStateStore(ApertureDatabase database) : IItemState
             SubtitleDelay: SyncOffset.Normalize(TimeSpan.FromMilliseconds(reader.GetInt64(3))),
             AudioDelay: SyncOffset.Normalize(TimeSpan.FromMilliseconds(reader.GetInt64(4))),
             Aspect: !reader.IsDBNull(5) && Enum.TryParse<AspectMode>(reader.GetString(5), out var aspect) && Enum.IsDefined(aspect) ? aspect : null,
-            Speed: reader.IsDBNull(6) ? null : Math.Clamp(reader.GetDouble(6), 0.25, 4));
+            Speed: reader.IsDBNull(6) ? null : Math.Clamp(reader.GetDouble(6), 0.25, 4),
+            Sound: reader.IsDBNull(7) && reader.IsDBNull(8) ? null : new SoundOptions(!reader.IsDBNull(7) && reader.GetInt64(7) != 0, !reader.IsDBNull(8) && reader.GetInt64(8) != 0));
     }
 
     public async Task SavePreferencesAsync(string path, PlaybackPreferences preferences, CancellationToken cancellationToken = default)
@@ -40,8 +41,8 @@ public sealed class SqliteItemStateStore(ApertureDatabase database) : IItemState
         await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO item_state (path, audio_track, subtitle_track, subtitles_off, subtitle_delay_ms, audio_delay_ms, aspect, speed)
-            VALUES ($path, $audio, $subtitle, $off, $subDelay, $audioDelay, $aspect, $speed)
+            INSERT INTO item_state (path, audio_track, subtitle_track, subtitles_off, subtitle_delay_ms, audio_delay_ms, aspect, speed, clear_dialogue, even_volume)
+            VALUES ($path, $audio, $subtitle, $off, $subDelay, $audioDelay, $aspect, $speed, $dialogue, $even)
             ON CONFLICT (path) DO UPDATE SET
                 audio_track = excluded.audio_track,
                 subtitle_track = excluded.subtitle_track,
@@ -49,7 +50,9 @@ public sealed class SqliteItemStateStore(ApertureDatabase database) : IItemState
                 subtitle_delay_ms = excluded.subtitle_delay_ms,
                 audio_delay_ms = excluded.audio_delay_ms,
                 aspect = excluded.aspect,
-                speed = excluded.speed;
+                speed = excluded.speed,
+                clear_dialogue = excluded.clear_dialogue,
+                even_volume = excluded.even_volume;
             """;
         command.Parameters.AddWithValue("$path", path);
         command.Parameters.AddWithValue("$audio", (object?)preferences.AudioTrackId ?? DBNull.Value);
@@ -59,6 +62,8 @@ public sealed class SqliteItemStateStore(ApertureDatabase database) : IItemState
         command.Parameters.AddWithValue("$audioDelay", (long)SyncOffset.Normalize(preferences.AudioDelay).TotalMilliseconds);
         command.Parameters.AddWithValue("$aspect", (object?)preferences.Aspect?.ToString() ?? DBNull.Value);
         command.Parameters.AddWithValue("$speed", (object?)preferences.Speed ?? DBNull.Value);
+        command.Parameters.AddWithValue("$dialogue", preferences.Sound is { } sound ? (sound.ClearDialogue ? 1 : 0) : DBNull.Value);
+        command.Parameters.AddWithValue("$even", preferences.Sound is { } chosen ? (chosen.EvenVolume ? 1 : 0) : DBNull.Value);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 

@@ -79,6 +79,15 @@ ff -f lavfi -i "$(pattern 1280x720 24 $d)" -f lavfi -i "$(tone 440 $d)" -f lavfi
    multi-track.mkv
 # Named like its video, so libmpv loads it automatically ("exact" matching).
 cp subs-en.srt "h264-aac-timedtext.en.srt"
+# Downloaded-release layout: the video's own folder under "Subs", with numbered language files.
+mkdir -p "release/Subs/Lighthouse.2019.1080p.WEB"
+ff -f lavfi -i "$(pattern 640x360 25 $d)" -f lavfi -i "$(tone 440 $d)" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac \
+   "release/Lighthouse.2019.1080p.WEB.mp4"
+cp subs-en.srt "release/Subs/Lighthouse.2019.1080p.WEB/2_English.srt"
+cp subs-fr.ass "release/Subs/Lighthouse.2019.1080p.WEB/3_French.forced.ass"
+# Seek previews: red for 10 s, then blue for 10 s, a keyframe every second.
+ff -f lavfi -i "color=c=0xC81E1E:s=640x360:r=25:d=10" -f lavfi -i "color=c=0x1E3CC8:s=640x360:r=25:d=10" \
+   -filter_complex "[0:v][1:v]concat=n=2:v=1[v]" -map "[v]" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 25 colours.mp4
 # Loaded by hand through "Add subtitle file".
 cp subs-fr.ass "extra-subtitles.ass"
 printf 'This is not a subtitle file.\n\x00\x01\x02' > "broken-subtitles.srt"
@@ -100,6 +109,8 @@ episode() { # name cold-open-seconds story-seconds seed
 episode "Harbour.S01E01.mkv" 10 40 100
 episode "Harbour.S01E02.mkv" 3 47 200
 episode "Harbour.S01E03.mkv" 15 35 300
+# The same episode in MP4 with the index at the front, as the visual-review episodes are made.
+ff -i Harbour.S01E01.mkv -c copy -movflags +faststart Harbour.S01E01.mp4
 cat > .chapters.txt <<'META'
 ;FFMETADATA1
 [CHAPTER]

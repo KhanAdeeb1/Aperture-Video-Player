@@ -33,6 +33,7 @@ public static class Win {
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hwnd, int x, int y, int w, int h, bool repaint);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int cmd);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out RECT rect, int size);
 }
 "@
@@ -91,7 +92,32 @@ function Find-ByName($p, [string] $name, [int] $seconds = 5) {
     return $null
 }
 
-function Invoke-Element($element) { $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+# Menus and flyouts can open in their own popup window; look through every window of the app.
+function Find-InApp($p, [string] $id, [int] $seconds = 5) {
+    $condition = New-Object System.Windows.Automation.AndCondition(
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)),
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $id)))
+    $windows = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        foreach ($window in [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $windows)) {
+            $element = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+            if ($element) { return $element }
+        }
+        Start-Sleep -Milliseconds 300
+    }
+    throw "UI element '$id' not found in any of Aperture's windows"
+}
+
+function Invoke-Element($element) {
+    $pattern = $null
+    if (-not $element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref] $pattern)) {
+        # A toggle menu item does not always offer Invoke; toggling it is the same click.
+        if ($element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref] $pattern)) { $pattern.Toggle(); return }
+        throw "'$($element.Current.AutomationId)' ($($element.Current.ControlType.ProgrammaticName), '$($element.Current.Name)') cannot be invoked"
+    }
+    $pattern.Invoke()
+}
 function Get-Range($element) { $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).Current }
 function Set-Range($element, [double] $value) { $element.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).SetValue($value) }
 
@@ -118,7 +144,16 @@ function Save-Shot($p, [string] $name, [switch] $FullScreen) {
     Note "captured $name ($w x $h)"
 }
 
-function Move-Mouse([int] $x, [int] $y) { [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point $x, $y }
+# Moved as real mouse input (absolute, on the primary screen): setting the cursor position alone
+# moves the arrow but sends WinUI no pointer events, so hover and idle behaviour went untested.
+function Move-Mouse([int] $x, [int] $y) {
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $nx = [int][math]::Round($x * 65535 / ($screen.Width - 1))
+    $ny = [int][math]::Round($y * 65535 / ($screen.Height - 1))
+    [Win]::mouse_event(0x8001, $nx, $ny, 0, [UIntPtr]::Zero)  # MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE
+    Start-Sleep -Milliseconds 30
+    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point $x, $y
+}
 function Move-MouseToCenter($p, [int] $dx = 0) {
     $r = Get-WindowRect $p
     Move-Mouse ([int](($r.Left + $r.Right) / 2) + $dx) ([int](($r.Top + $r.Bottom) / 2))
@@ -141,12 +176,42 @@ function Write-CrashDetails {
     Get-WinEvent -LogName Application -MaxEvents 10 -ErrorAction SilentlyContinue |
         Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error' } |
         ForEach-Object { Write-Host "  event: $($_.Message)" }
+    Write-DumpAnalysis
+}
+
+# A crash inside WinUI (exception 0xc000027b) never reaches Aperture's own handler or log, and
+# the event log names only the module. Windows Error Reporting keeps a dump of such a crash,
+# and the debugger's analysis of it names the stowed exception (HRESULT, message and stack).
+$dumpDir = Join-Path $OutDir 'dumps'
+New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+try {
+    $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\Aperture.exe'
+    New-Item -Path $key -Force | Out-Null
+    Set-ItemProperty -Path $key -Name DumpFolder -Value $dumpDir -Type ExpandString
+    Set-ItemProperty -Path $key -Name DumpType -Value 2 -Type DWord
+    Set-ItemProperty -Path $key -Name DumpCount -Value 3 -Type DWord
+} catch { Write-Host "Crash dumps not enabled: $($_.Exception.Message)" }
+
+function Write-DumpAnalysis {
+    Start-Sleep -Seconds 5  # Windows Error Reporting writes the dump after the process is gone.
+    $dump = Get-ChildItem $dumpDir -Filter *.dmp -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $dump) { Write-Host '  no crash dump'; return }
+    $cdb = @("${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64\cdb.exe", "$env:ProgramFiles\Windows Kits\10\Debuggers\x64\cdb.exe") |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $cdb) { Write-Host "  crash dump $($dump.Name) written, but no debugger to read it" }
+    else {
+        $analysis = & $cdb -z $dump.FullName -c '.symfix; .reload; !analyze -v; q' 2>&1 | Out-String
+        $analysis | Set-Content (Join-Path $OutDir "crash-$($dump.BaseName).txt")
+        $analysis -split "`n" | Select-String -Pattern 'STOWED|Stowed|HRESULT|ExceptionCode|EXCEPTION_|ERROR_CODE|Message|SYMBOL_NAME|FAILURE_BUCKET|STACK_TEXT|!' |
+            Select-Object -First 80 | ForEach-Object { Write-Host "  dump: $($_.Line.TrimEnd())" }
+    }
+    Remove-Item $dump.FullName -Force -ErrorAction SilentlyContinue
 }
 
 function Step([string] $name, [scriptblock] $body) {
     Write-Host "=== $name"
     try { & $body }
-    catch { $failures.Add("${name}: $($_.Exception.Message)"); Write-Warning "${name} failed: $($_.Exception.Message)"; Write-CrashDetails }
+    catch { $failures.Add("${name}: $($_.Exception.Message)"); Note "FAILED ${name}: $($_.Exception.Message)"; Write-Warning "${name} failed: $($_.Exception.Message)"; Write-CrashDetails }
     Get-Process -Name Aperture -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
@@ -394,8 +459,14 @@ Step 'FFV1 plays' {
 Step 'Tracks, subtitles, info, picture shape, speed' {
     $p = Start-Aperture (Media 'Night Market.mkv')
     Start-Sleep -Seconds 3
-    Send-Keys $p 'c'
-    Start-Sleep -Milliseconds 600
+    # C steps through the subtitle tracks and off; stop on an English track so 41 shows one.
+    for ($i = 0; $i -lt 4; $i++) {
+        Send-Keys $p 'c'
+        Start-Sleep -Milliseconds 600
+        $toast = (Find-Element $p 'ToastText').Current.Name
+        if ($toast -match '(?i)eng') { break }
+    }
+    Note "Subtitle toast after C: $toast"
     Save-Shot $p '40-subtitles-toast'
     Move-MouseAway
     Start-Sleep -Seconds 5
@@ -457,6 +528,93 @@ Step 'Sync and subtitle look panel, shortcuts panel' {
     Find-Element $p 'ShortcutsCloseButton' | Out-Null
     Save-Shot $p '49-shortcuts-panel'
     Send-Keys $p '{ESC}'
+    Stop-Aperture $p
+}
+
+Step 'Seek preview, bookmarks, loop, sound' {
+    $p = Start-Aperture (Media 'Night Drive.mp4')
+    Start-Sleep -Seconds 3
+    Move-MouseToCenter $p 60
+    Start-Sleep -Milliseconds 150
+    Move-MouseToCenter $p
+    Start-Sleep -Milliseconds 600
+    # Point at 30 % of the timeline; the picture is made by the hidden preview decoder.
+    $box = (Find-Element $p 'Timeline').Current.BoundingRectangle
+    $y = [int]($box.Top + $box.Height / 2)
+    Move-Mouse ([int]($box.Left + $box.Width * 0.30) - 4) $y
+    Start-Sleep -Milliseconds 200
+    Move-Mouse ([int]($box.Left + $box.Width * 0.30)) $y
+    # Rest on the timeline past the idle delay: the controls (and the preview) must stay.
+    Start-Sleep -Seconds 4
+    Save-Shot $p '100-seek-preview'
+    try { Note "Seek preview time: $((Find-Element $p 'PreviewTime' 2).Current.Name)" } catch { Note 'Seek preview time text is not in the automation tree (the card is decorative); see 100-seek-preview.png' }
+
+    Move-MouseToCenter $p
+    Start-Sleep -Milliseconds 400
+    Send-Keys $p 'b'
+    Start-Sleep -Milliseconds 800
+    $toast = (Find-Element $p 'ToastText').Current.Name
+    Note "After B: $toast"
+    if (-not $toast.StartsWith('Bookmarked')) { throw "B did not bookmark (the notice reads '$toast')" }
+    Save-Shot $p '101-bookmark-toast'
+
+    Send-Keys $p '+b'
+    Start-Sleep -Seconds 1
+    Find-Element $p 'BookmarksPanel' | Out-Null
+    Find-Element $p 'AddBookmarkButton' | Out-Null
+    Save-Shot $p '102-bookmarks-panel'
+    Send-Keys $p '{ESC}'
+    Start-Sleep -Milliseconds 600
+
+    Send-Keys $p '+l'
+    Start-Sleep -Seconds 3
+    Send-Keys $p '+l'
+    Start-Sleep -Milliseconds 800
+    $chip = (Find-Element $p 'LoopChip').Current
+    Note "Loop chip after Shift+L twice: $((Find-Element $p 'ToastText').Current.Name)"
+    if ($chip.IsOffscreen) { throw 'the loop chip is not shown after setting a loop' }
+    Move-MouseToCenter $p 30
+    Start-Sleep -Milliseconds 400
+    Save-Shot $p '103-loop-chip'
+
+    Send-Keys $p 'd'
+    Start-Sleep -Milliseconds 800
+    $toast = (Find-Element $p 'ToastText').Current.Name
+    Note "After D: $toast"
+    if ($toast -ne 'Clearer dialogue on') { throw "D did not turn clearer dialogue on (the notice reads '$toast')" }
+    Save-Shot $p '104-clear-dialogue-toast'
+
+    Move-MouseToCenter $p 40
+    Start-Sleep -Milliseconds 400
+    Invoke-Element (Find-Element $p 'MoreButton')
+    Start-Sleep -Seconds 1
+    Save-Shot $p '105-more-menu-advanced'
+    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+    Start-Sleep -Milliseconds 500
+
+    Send-Keys $p '^,'
+    Start-Sleep -Seconds 1
+    $toggle = Find-Element $p 'ClearDialogueToggle'
+    $scroll = $null
+    if ($toggle.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref] $scroll)) { $scroll.ScrollIntoView() }
+    Start-Sleep -Milliseconds 600
+    Move-MouseAway
+    Save-Shot $p '106-settings-sound'
+    Stop-Aperture $p
+}
+
+Step 'Error panel: try again and copy a report' {
+    $p = Start-Aperture (Media 'Damaged Copy.mp4')
+    Start-Sleep -Seconds 6
+    Find-Element $p 'ErrorRetryButton' | Out-Null
+    Move-MouseAway
+    Save-Shot $p '107-error-retry-copy'
+    Invoke-Element (Find-Element $p 'ErrorCopyButton')
+    Start-Sleep -Milliseconds 800
+    $report = Get-Clipboard -Raw
+    if (-not $report -or -not $report.StartsWith('Aperture diagnostic report')) { throw "Copy details did not put a report on the clipboard: '$report'" }
+    if ($report.Contains($MediaDir) -or $report.Contains('Damaged Copy')) { throw 'the copied report still names the media folder or file' }
+    Note "Copied report: $((($report -split "`r?`n") | Select-Object -First 8) -join ' | ')"
     Stop-Aperture $p
 }
 
@@ -700,12 +858,20 @@ Step 'Episodes' {
     Assert-Playing $p $third 25
     Note 'Autoplay opened S1 E3 when the countdown ended'
 
-    # The correction panel, from More options.
-    Start-Sleep -Seconds 2
-    Move-MouseToCenter $p
-    Invoke-Element (Find-Element $p 'MoreButton')
-    Start-Sleep -Milliseconds 800
-    Invoke-Element (Find-Element $p 'SegmentsMenuItem' 3)
+    # The correction panel, from More options. It is enabled once the file's fingerprint is
+    # known, which takes a moment after autoplay opens the episode; the menu reads it on opening.
+    $deadline = (Get-Date).AddSeconds(20)
+    while ($true) {
+        Start-Sleep -Seconds 2
+        Move-MouseToCenter $p
+        Invoke-Element (Find-Element $p 'MoreButton')
+        Start-Sleep -Milliseconds 800
+        $item = Find-InApp $p 'SegmentsMenuItem' 5
+        if ($item.Current.IsEnabled) { break }
+        if ((Get-Date) -gt $deadline) { throw 'Intro and credits stayed unavailable for S1 E3' }
+        Send-Keys $p '{ESC}'
+    }
+    Invoke-Element $item
     Start-Sleep -Seconds 1
     Find-Element $p 'ConfirmSegmentButton' 3 | Out-Null
     Move-MouseAway
@@ -762,9 +928,314 @@ Step 'Resume choice' {
     Stop-Aperture $p
 }
 
+# YouTube needs the network; GitHub's Windows runners have it. No API key is configured,
+# so this covers the keyless path: consent, pasting a link, the embedded player (oEmbed
+# for details), saving, the unavailable-video panel and the settings group.
+function Wait-Log([string] $text, [int] $seconds) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        if ((Get-LogText).Contains($text)) { return $true }
+        Start-Sleep -Milliseconds 500
+    }
+    return $false
+}
+
+# Types a link into the title bar's search box and submits it. The box is focused through UI
+# Automation and its text checked before Enter, so a keystroke lost to another window shows up
+# as a clear failure here rather than as a player that never answers.
+function Open-YouTubeLink($p, [string] $url) {
+    # The AutoSuggestBox itself takes no focus; its text field does.
+    $box = Find-Element $p 'SearchBox'
+    $field = $box.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+    if (-not $field) { throw 'the search box has no text field' }
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        [Win]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+        $field.SetFocus()
+        Start-Sleep -Milliseconds 400
+        [System.Windows.Forms.SendKeys]::SendWait('^a{BACKSPACE}' + $url)
+        Start-Sleep -Milliseconds 400
+        $value = $null
+        if ($field.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref] $value) -and $value.Current.Value -eq $url) {
+            [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+            return
+        }
+        Note "Search box held '$($value.Current.Value)' instead of the link (attempt $attempt)"
+    }
+    throw 'the link could not be typed into the search box'
+}
+
+Step 'YouTube' {
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Invoke-Element (Find-Element $p 'YouTubeButton')
+    Find-Element $p 'YouTubeAcceptButton' | Out-Null
+    Move-MouseAway
+    Save-Shot $p '80-youtube-consent'
+
+    Invoke-Element (Find-Element $p 'YouTubeAcceptButton')
+    Find-Element $p 'YouTubeNotice' | Out-Null
+    Save-Shot $p '81-youtube-no-key'
+
+    Open-YouTubeLink $p 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
+    # YouTube decides whether it serves a video to a cloud machine. Either outcome proves the
+    # embed works end to end (page, IFrame API, events back to Aperture): it plays, or YouTube's
+    # player reports an error, which Aperture must explain in place of the player.
+    $deadline = (Get-Date).AddSeconds(60)
+    $outcome = $null
+    while (-not $outcome -and (Get-Date) -lt $deadline) {
+        $text = Get-LogText
+        if ($text.Contains('YouTube player: playing.')) { $outcome = 'playing' }
+        elseif ($text -match 'YouTube player error (\d+)') { $outcome = "error $($Matches[1])" }
+        else { Start-Sleep -Milliseconds 500 }
+    }
+    if (-not $outcome) {
+        Save-Shot $p '82-youtube-player-failed'
+        throw 'the YouTube player neither played nor reported an error'
+    }
+    Start-Sleep -Seconds 3
+    Move-MouseAway
+    if ($outcome -eq 'playing') {
+        Note 'YouTube: the video played in the embedded player'
+        Save-Shot $p '82-youtube-player'
+        # Nothing Aperture draws may cover the embedded player while it plays.
+        foreach ($id in 'YouTubeProblemTitle', 'YouTubeNextCaption') {
+            $over = $null
+            try { $over = Find-Element $p $id 1 } catch { }
+            if ($over -and -not $over.Current.IsOffscreen) { throw "'$id' is showing over the player" }
+        }
+    } else {
+        $refused = Find-Element $p 'YouTubeProblemTitle' 5
+        Note "YouTube: playback NOT confirmed; YouTube's player refused this machine ($outcome), shown as '$($refused.Current.Name)'"
+        Save-Shot $p '82-youtube-player-refused'
+    }
+    Invoke-Element (Find-Element $p 'YouTubeSaveButton')
+    Start-Sleep -Seconds 1
+    Stop-Aperture $p
+
+    # Saved survives a restart, and the consent is not asked again.
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Invoke-Element (Find-Element $p 'YouTubeButton')
+    if (-not (Find-ByName $p 'Saved' 10)) { throw 'the Saved shelf did not appear after a restart' }
+    Start-Sleep -Seconds 2
+    Move-MouseAway
+    Save-Shot $p '83-youtube-saved'
+
+    # A video id that does not exist is explained, not played or left blank.
+    Open-YouTubeLink $p 'https://www.youtube.com/watch?v=Ap3rtur3x0Q'
+    $title = Find-Element $p 'YouTubeProblemTitle' 30
+    Note "Unavailable video: $($title.Current.Name)"
+    Move-MouseAway
+    Save-Shot $p '84-youtube-unavailable'
+    Stop-Aperture $p
+
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    Send-Keys $p '^,'
+    Start-Sleep -Seconds 1
+    $toggle = Find-Element $p 'YouTubeAutoplayToggle'
+    $scroll = $null
+    if ($toggle.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref] $scroll)) { $scroll.ScrollIntoView() }
+    $toggle.SetFocus()
+    Start-Sleep -Seconds 1
+    if ($toggle.Current.IsOffscreen) { throw 'Settings did not scroll to the YouTube group' }
+    Move-MouseAway
+    Save-Shot $p '85-settings-youtube'
+    Stop-Aperture $p
+}
+
+# The media server: turned on from Settings, reached over the network like a phone would,
+# and still running after Aperture closes, until it is stopped from Settings.
+function Get-ServerCode([string] $path) {
+    $code = & curl.exe -sk -o NUL -w '%{http_code}' --max-time 5 "https://127.0.0.1:8443/$path"
+    return "$code"
+}
+
+function Wait-ServerCaption($p, [string] $prefix, [int] $seconds = 30) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        $caption = (Find-Element $p 'ServerStatusCaption').Current.Name
+        if ($caption.StartsWith($prefix)) { return $caption }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "the media server status never read '$prefix' (it reads '$caption')"
+}
+
+function Show-ServerSettings($p) {
+    Send-Keys $p '^,'
+    Start-Sleep -Seconds 1
+    $button = Find-Element $p 'ServerStartButton'
+    $scroll = $null
+    if ($button.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref] $scroll)) { $scroll.ScrollIntoView() }
+    $button.SetFocus()
+    Start-Sleep -Seconds 1
+    if ($button.Current.IsOffscreen) { throw 'Settings did not scroll to the media server group' }
+    return $button
+}
+
+Step 'Media server' {
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    $button = Show-ServerSettings $p
+    $off = Wait-ServerCaption $p 'Off'
+    Note "Media server before starting: $off"
+    Move-MouseAway
+    Save-Shot $p '90-settings-media-server'
+
+    # Share the test library and set a passphrase, as a person would.
+    $share = Find-ByName $p 'Share Library' 10
+    if (-not $share) { throw 'the Library folder has no share switch' }
+    Invoke-Element $share
+    foreach ($id in 'PassphraseBox', 'PassphraseAgainBox') {
+        (Find-Element $p $id).SetFocus()
+        Start-Sleep -Milliseconds 300
+        [System.Windows.Forms.SendKeys]::SendWait('lantern river 42')
+    }
+    Invoke-Element (Find-Element $p 'SavePassphraseButton')
+    Start-Sleep -Seconds 1
+    Note "Passphrase: $((Find-Element $p 'PassphraseCaption').Current.Name)"
+
+    Invoke-Element $button
+    $on = Wait-ServerCaption $p 'On'
+    Note "Media server after Start: $on"
+    $setupCode = & curl.exe -s -o NUL -w '%{http_code}' --max-time 5 'http://127.0.0.1:8080/'
+    if ("$setupCode" -ne '200') { throw "the setup page answered $setupCode" }
+    if ((Get-ServerCode 'api/library') -ne '401') { throw 'the library answered without signing in' }
+
+    # Sign in over HTTPS like a phone. (TLS trust itself is covered by the server tests.)
+    $body = Join-Path $env:TEMP 'aperture-signin.json'
+    [System.IO.File]::WriteAllText($body, '{"passphrase":"lantern river 42","deviceName":"CI phone"}')
+    $jar = Join-Path $env:TEMP 'aperture-cookies.txt'
+    $signIn = & curl.exe -sk -o NUL -w '%{http_code}' --max-time 10 -c $jar -H 'X-Aperture: 1' -H 'Content-Type: application/json' --data-binary "@$body" 'https://127.0.0.1:8443/api/session'
+    if ("$signIn" -ne '200') { throw "signing in answered $signIn" }
+    $library = & curl.exe -sk --max-time 10 -b $jar 'https://127.0.0.1:8443/api/library'
+    if ("$library" -notmatch 'Night Shift') { throw "the shared library didn't list the test shows: $library" }
+    Note 'Media server: signed in over HTTPS and listed the shared library'
+    if (-not (Find-ByName $p 'Sign out CI phone' 15)) { throw 'the signed-in device did not appear in Settings' }
+    Start-Sleep -Seconds 1
+    Move-MouseAway
+    Save-Shot $p '91-settings-media-server-running'
+    $connect = Find-Element $p 'ServerSetupText'
+    Note "Connect a device shows: $($connect.Current.Name)"
+
+    # Closing Aperture leaves the server running.
+    Stop-Aperture $p
+    Start-Sleep -Seconds 2
+    if ((Get-ServerCode 'api/session') -ne '200') { throw 'the media server stopped when Aperture closed' }
+    Note 'Media server: still answering after Aperture closed'
+
+    # Stopping it from Settings, and starting it again.
+    $p = Start-Aperture
+    Start-Sleep -Seconds 3
+    $button = Show-ServerSettings $p
+    Wait-ServerCaption $p 'On' | Out-Null
+    Invoke-Element $button
+    Wait-ServerCaption $p 'Off' | Out-Null
+    if ((Get-ServerCode 'api/session') -ne '000') { throw 'the media server still answers after Stop' }
+    Invoke-Element $button
+    Wait-ServerCaption $p 'On' | Out-Null
+    if ((Get-ServerCode 'api/session') -ne '200') { throw 'the media server did not answer after starting again' }
+    Invoke-Element $button
+    Wait-ServerCaption $p 'Off' | Out-Null
+    Note 'Media server: stopped, started again and stopped from Settings'
+    Stop-Aperture $p
+}
+
+# Play on a TV: a stand-in DLNA TV (fake-tv.py) answers on the network, Aperture finds it,
+# casts to it, and the TV really fetches the media from the media server.
+function Wait-CastHeading($p, [string] $prefix, [int] $seconds = 30) {
+    $deadline = (Get-Date).AddSeconds($seconds)
+    while ((Get-Date) -lt $deadline) {
+        $heading = (Find-Element $p 'CastHeading').Current.Name
+        if ($heading.StartsWith($prefix)) { return $heading }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "the casting view never read '$prefix' (it reads '$heading')"
+}
+
+function Open-CastPicker($p) {
+    Move-MouseToCenter $p 40
+    Start-Sleep -Milliseconds 400
+    Invoke-Element (Find-Element $p 'MoreButton')
+    Start-Sleep -Milliseconds 800
+    Invoke-Element (Find-InApp $p 'CastMenuItem' 5)
+    Start-Sleep -Seconds 1
+}
+
+Step 'Casting' {
+    $tvLog = Join-Path $OutDir 'fake-tv.log'
+    Remove-Item $tvLog -ErrorAction SilentlyContinue
+    $tv = Start-Process -FilePath 'python' -ArgumentList "`"$PSScriptRoot\fake-tv.py`" --port 49500 --log `"$tvLog`"" -PassThru -WindowStyle Hidden
+    try {
+        Start-Sleep -Seconds 2
+        if ($tv.HasExited) { throw 'the stand-in TV did not start' }
+        $p = Start-Aperture (Media 'Harbour Lights.mp4')
+        Start-Sleep -Seconds 3
+        Send-Keys $p ' '   # paused, so the place cast from stays put
+        Start-Sleep -Milliseconds 500
+
+        # The media server is off (the last step stopped it): the picker says so and offers to start it.
+        Open-CastPicker $p
+        Note "Cast picker with the server off: $((Find-Element $p 'CastPickerStatus').Current.Name)"
+        Move-MouseAway
+        Save-Shot $p '95-cast-picker-server-off'
+        Invoke-Element (Find-Element $p 'CastStartServerButton')
+        $renderer = $null
+        $deadline = (Get-Date).AddSeconds(45)
+        while (-not $renderer -and (Get-Date) -lt $deadline) {
+            # A search takes a little over 3 s; wait longer than that before searching again,
+            # since Search again clears the list.
+            try { $renderer = Find-Element $p 'CastRenderer' 10 } catch { }
+            if (-not $renderer) {
+                try { $search = Find-Element $p 'CastSearchButton' 1; if ($search.Current.IsEnabled -and -not $search.Current.IsOffscreen) { Invoke-Element $search } } catch { }
+            }
+        }
+        if (-not $renderer) { throw "no TV was found (picker reads '$((Find-Element $p 'CastPickerStatus').Current.Name)')" }
+        Note "Cast picker lists: $($renderer.Current.Name)"
+        Move-MouseAway
+        Save-Shot $p '96-cast-picker'
+
+        Invoke-Element $renderer
+        $heading = Wait-CastHeading $p 'Playing on' 45
+        Note "Casting view: $heading; delivery: $((Find-Element $p 'CastDelivery').Current.Name)"
+        Start-Sleep -Seconds 3
+        Note "Casting position: $((Find-Element $p 'CastPositionText').Current.Name)"
+        Move-MouseAway
+        Save-Shot $p '97-casting'
+
+        Send-Keys $p ' '
+        Note "After Space: $(Wait-CastHeading $p 'Paused on' 15)"
+        Invoke-Element (Find-Element $p 'StopCastingButton')
+        $toast = ''
+        $deadline = (Get-Date).AddSeconds(15)
+        while (-not $toast.StartsWith('Stopped casting') -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 300
+            $toast = (Find-Element $p 'ToastText').Current.Name
+        }
+        if (-not $toast.StartsWith('Stopped casting')) { throw "stopping didn't say where it stopped (the notice reads '$toast')" }
+        Note "After Stop casting: $toast"
+        Move-MouseAway
+        Save-Shot $p '98-cast-stopped'
+
+        $log = Get-Content $tvLog -Raw
+        if ($log -notmatch 'fetched 20[06] ') { throw "the TV never fetched the media: $log" }
+        if ($log -notmatch 'Stop -> STOPPED') { throw "the TV was not told to stop: $log" }
+        Note 'Casting: the stand-in TV fetched the media, paused and stopped'
+        Stop-Aperture $p
+    }
+    finally {
+        if (-not $tv.HasExited) { Stop-Process -Id $tv.Id -Force -ErrorAction SilentlyContinue }
+        $server = Join-Path (Split-Path $Exe) 'Server\Aperture.Server.exe'
+        & $server stop | Out-Null
+    }
+}
+
 # ---------------------------------------------------------------------------------------
 $logFile = Join-Path $dataDir 'Logs\aperture.log'
 if (Test-Path $logFile) { Copy-Item $logFile (Join-Path $OutDir 'aperture.log') }
+$serverLog = Join-Path $dataDir 'Logs\server.log'
+if (Test-Path $serverLog) { Copy-Item $serverLog (Join-Path $OutDir 'server.log') }
 # Any exception that reached Aperture's last-chance handler fails the review, even if the
 # step that caused it carried on.
 if ((Test-Path $logFile) -and (Select-String -Path $logFile -Pattern 'Unhandled exception' -SimpleMatch -Quiet)) {

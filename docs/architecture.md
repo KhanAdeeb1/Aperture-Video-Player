@@ -24,7 +24,7 @@ Status: proposed in Milestone 0. Items marked **unverified** are design intentio
 │ event loop, engine │ │                    │ │                    │
 └────────────────────┘ └────────────────────┘ └────────────────────┘
 
-Later, separate process:  Aperture.Server (media server, remote streaming)
+Separate process:  Aperture.Server (media server for phones and tablets, §12)
 ```
 
 Rules that hold the shape together:
@@ -44,7 +44,8 @@ Rules that hold the shape together:
 | `Aperture.Video` | `net10.0-windows` | The Direct3D 11 video presenter: ANGLE frame source, software fallback, composition swap chain, render thread (§4.2) | M2 |
 | `Aperture.Data` | `net10.0` | `Microsoft.Data.Sqlite` connection management, versioned SQL migrations, settings and playback-history repositories | M1 (brought forward from M4) |
 | `Aperture.Media` | `net10.0` | Library scanning, the background library coordinator, optional TMDB lookup and the artwork cache (§8) | M4 |
-| `Aperture.Server` | separate executable | Background media server for remote/cross-device playback | After first release |
+| `Aperture.YouTube` | `net10.0` | YouTube Data API v3 client, oEmbed lookup, Google sign-in (loopback, PKCE) and `YouTubeService`, which keeps Continue watching, Saved and the 30-day details rule (§11). Knows nothing about local playback | M6 |
+| `Aperture.Server` | `net10.0`, separate executable | The media server: Kestrel on two ports, its own certificate authority, device sign-in, the shared-library API, direct play, FFmpeg remuxing and conversion, the phone web client (`wwwroot`), and a command line. References `Core` and `Data` only (§12) | M7 |
 
 Tests mirror the modules: `tests/Aperture.<Module>.Tests`. Tests that need the native libmpv library are integration tests and are reported as skipped, never as passed, when the library is absent.
 
@@ -197,7 +198,7 @@ Player ─► EpisodeCueTracker (Core) ◄── segments + the user's correctio
 - **Shows and order.** `SeriesCatalog` groups library episodes by show (normalised title plus year, so two shows with the same name stay apart), orders them by season and episode with specials last, folds copies of the same episode into one `CopyGroup`, and understands files that hold several episodes (`S01E01E02`, `S01E01-02`, stored as `episode_end`). Next and previous follow this order and pick the copy from the same folder where there is one. The catalog is rebuilt from the database after every scan, so navigation is always computed from the current library, never from stored positions.
 - **Continue Watching.** `ContinueWatching.Build` takes the history, the catalog and watched overrides. For each show it keeps one card: the episode in progress, or "Up next" when the last one was finished. Films and other files keep their own cards.
 - **Watched.** An episode counts as watched when the user marks it, when it reaches confident credits, or when they move on from the credits or the end. Opening a watched episode starts from the beginning.
-- **Detection by measurement.** For each episode file, `MpvSignalReader` decodes the sound at 5512 Hz faster than real time (to a temporary file in Aperture's data folder, deleted afterwards), runs FFmpeg's `blackdetect` on a reduced picture over the last part of the file, and reads its chapters. `AudioPrint` turns the sound into a Haitsma–Kalker fingerprint (one 32-bit hash per 11.6 ms). `SegmentDetector` (version 1) then compares the file with up to four other episodes of the show, same season and nearest first:
+- **Detection by measurement.** For each episode file, `MpvSignalReader` decodes the sound at 5512 Hz faster than real time (to a temporary file in Aperture's data folder, deleted afterwards), writes a 32 × 18 grey copy of the last part of the picture, four frames a second, to another temporary file with libmpv's encoding mode and measures which stretches are dark (FFmpeg's own `blackdetect` cannot be used: FFmpeg logs to only one libmpv instance per process, the player's), and reads its chapters. `AudioPrint` turns the sound into a Haitsma–Kalker fingerprint (one 32-bit hash per 11.6 ms). `SegmentDetector` (version 1) then compares the file with up to four other episodes of the show, same season and nearest first:
   - *Intro*: a stretch in the first 45 % (at most 12 minutes) whose sound recurs in other episodes. `PrintMatcher` tests every offset, so a cold open of any length is fine; nothing assumes the intro sits where another episode's did. Confidence grows with the number of episodes that agree: one 0.65, two 0.8, three or more 0.9. A chapter named "Opening" or "Intro" that measurement confirms is 0.95.
   - *Credits*: in the last 45 % (at most 10 minutes), closing music shared with other episodes and/or a long, nearly dark picture. Both together are 0.95. When the credits end more than 15 s before the end of the file, the rest is treated as a scene after the credits: Skip Credits goes to it and the next-episode card waits for the real end.
   - *Recap*: at least two short clips before the intro whose sound appears in the previous one or two episodes.
@@ -207,3 +208,74 @@ Player ─► EpisodeCueTracker (Core) ◄── segments + the user's correctio
 - **Corrections.** The player's Intro and credits panel lets the user mark a start and end at the current position, confirm what was found, say there is none, or go back to what was found. Corrections are stored in `segment_corrections` by fingerprint, survive re-analysis and rescans, and always win over detection (a confirmed or corrected segment counts as certain).
 - **Autoplay.** `EpisodeCueTracker` decides when the next-episode card shows: at confident credits that run to the end, or at the end of the file. The countdown (5 to 30 s, default 10) runs only when autoplay is on for that show; pausing, Esc, Cancel or Close stops it for that episode, and after three episodes in a row played by autoplay alone it waits for the user. Per-show preferences (`series_preferences`) override the Settings defaults for autoplay, intros and recaps.
 - **Read-only.** Analysis only reads media files. Nothing is written next to them.
+
+## 11. YouTube (Milestone 6)
+
+```
+YouTubeView (App) ─► YouTubeService ─► YouTubeDataApi (key, optional OAuth token) ─► googleapis.com/youtube/v3
+     │                    ├─► YouTubeOEmbed (no key) ─► youtube.com/oembed
+     │                    ├─► YouTubeAccount ─► GoogleOAuth (loopback + PKCE) ─► ISecretStore (Credential Manager)
+     │                    └─► IYouTubeStore (SQLite youtube_videos)
+     └─► YouTubePlayerView ─► WebView2 ─► Assets/YouTube/player.html (https://com.aperture.player/) ─► YouTube IFrame Player
+```
+
+- **Isolation.** YouTube is its own module and its own two screens. It shares only the settings store, the secret store, the database and the shared `HttpClient` with the rest of the app, and never touches the libmpv engine, the library or local history. A YouTube failure (no network, no key, quota, WebView2 missing) is shown inside the YouTube screens only.
+- **Playback** is YouTube's IFrame Player API in WebView2, never stream extraction. The page is served from a virtual host so the embed carries an app identity as its referrer, as YouTube's Required Minimum Functionality asks. The page reports state, time and error codes to the app with `postMessage`; the app sends `load`, `pause` and `stop`. Nothing is drawn over the player.
+- **Playability.** Before playing, `YouTubeService.LookupAsync` reads `videos.list` status (embeddable, privacy, age restriction, region, live/upcoming, processing) when a key is set, or oEmbed otherwise (404 not found, 401 not embeddable). `YouTubePlayabilityRules` turns that, or a player error code (100, 101/150, 153), into one explanation with Watch on YouTube.
+- **Stored data.** `youtube_videos` holds Aperture's own records (video ID, position, last watched, saved) and a dated copy of the title, channel, thumbnail and length. `YouTubeDataRules` refreshes the copy after 25 days and deletes it at 30, as the Developer Policies require.
+- **Account.** Optional and read-only (`youtube.readonly`), with the user's own OAuth client. Tokens live in Credential Manager; an expired or revoked refresh token signs the user out instead of failing silently.
+- **Autoplay** for YouTube is a separate setting (`youtube.autoplay`) using the same `NextEpisodeCountdown` as episodes, but never the episode autoplay setting.
+
+Setup, quota and limits for users: [youtube.md](youtube.md).
+
+## 12. Media server (Milestone 7)
+
+```
+Phone browser ──HTTPS :8443──► Aperture.Server (separate process, keeps running when the app closes)
+     │                            ├─ network gate (NetworkAccess: loopback, home network; private network only if allowed)
+     └──HTTP :8080 (setup page,   ├─ DeviceAuth (passphrase → device token cookie) · LoginThrottle
+         certificate only)        ├─ ApiEndpoints ─► SharedLibrary ─► SqliteLibraryStore / SqlitePlaybackHistory
+                                  ├─ MediaEndpoints ─► direct file (Range) │ ConversionManager ─► FFmpeg (HLS or fMP4)
+Aperture.App ─ Settings ─────────►├─ SetupEndpoints /control/* (loopback + token from Server\server.json)
+   (MediaServerHost: start,       └─ CertificateAuthority (name-constrained, user cert store) · KeepAwake
+    stop, status; SqliteServerStore edits settings, folders, devices)
+```
+
+- **Separate lifecycles.** The app never hosts the server. `MediaServerHost` starts `Server\Aperture.Server.exe run --background` hidden and talks to it only through `server.json` (process id, ports, a per-start control token) and the loopback control address. The server holds `server.lock` so only one copy runs. Both processes share Aperture's SQLite database (WAL mode, each with its own connections); the server reads its settings with a 3-second cache, so changes in Settings apply without a restart (ports excepted). "Start with Windows" is an `HKCU\…\Run` entry that runs `Aperture.exe --media-server`, which starts the server and exits without a window.
+- **Core rules** (`Aperture.Core/Server`): `NetworkAccess` (address zones), `Passphrase` and `DeviceToken`, `SharedMedia` (what may be served) and `RemoteProgress` (what a device may record), `StreamPlanner` (direct play, remux, convert or unavailable, with the bitrate ladder), `ServerSettings`, `ServerStateFile` and `ServerControlClient`. All platform-neutral and unit-tested.
+- **Data**: migration 5 adds `server_shared_folders` (folder ids, removed with their folder) and `server_devices` (token hash, name, last seen, expiry, last address). Settings and the passphrase hash are `server.*` rows of `settings`.
+- **Streams.** Direct play serves the file with range requests at `/media/{token}/file.ext`; the token is random per device and item. Remux and convert run FFmpeg with arguments passed one by one (no shell) and the input as `file:` + path: HLS (EVENT playlist, 4 s MPEG-TS segments, written with `temp_file`) for clients with HLS, or one fragmented MP4 piped from FFmpeg's standard output for those without. Conversions live in `Server\Conversions\<id>` and are reaped when unused. The H.264 encoder is chosen by a real one-frame test encode (NVENC, Quick Sync, AMF, then x264).
+- **Progress sync.** The phone posts its position every 10 s, on pause and when the page is hidden. The server clamps it to the library's length and writes the same `playback_history` the desktop uses, unless the desktop's history setting is off.
+- **Logging.** `Logs\server.log`, with ASP.NET Core's own categories at Warning so request addresses (which hold tokens) aren't written.
+
+User guide, laptop behaviour and the security design: [media-server.md](media-server.md).
+
+## 13. Playing on a TV (Milestone 8)
+
+```
+Aperture.App PlayerView ──/control/cast/* (loopback + token)──► Aperture.Server CastManager ─► CastSession (one at a time)
+   (remote: status every 1 s,                                     │  SsdpDiscovery (M-SEARCH from each home-network address)
+    play/pause/seek/stop)                                         │  UpnpRenderer (SOAP: AVTransport, ConnectionManager)
+                                                                  │  TvStreamPlanner + CastPositionTracker (Core)
+TV ◄──SOAP── CastSession            TV ──HTTP :8080 /cast/{token}/…──► CastEndpoints ─► file (Range) │ FFmpeg ─► MPEG-TS pipe
+```
+
+- **Protocol choice.** DLNA/UPnP AV (MediaRenderer:1) is the only TV protocol a Windows desktop app can drive without a vendor's permission or SDK: Google Cast needs a registered receiver and a sender SDK with no supported Windows desktop version, AirPlay is licensed to device makers, and Roku needs a published channel. Miracast is already in Windows (Windows+K). DLNA rendering is built into many TVs and players, so it is implemented, and the others are documented as alternatives in [casting.md](casting.md).
+- **The cast lives in the media server**, not the window: it keeps polling the TV, saving progress and serving the stream if Aperture closes, and the TV fetches from the address the server already listens on. The app is a remote over the loopback control address, as for Settings. One cast runs at a time.
+- **Core rules** (`Aperture.Core/Casting`): `TvStreamPlanner` (direct play, MPEG-TS remux, or H.264/AAC MPEG-TS conversion, from the TV's `GetProtocolInfo` sink list and FFprobe), `CastPositionTracker` (which reported positions are trusted enough to save), `DlnaTime`, and the status models. Platform-neutral and unit-tested.
+- **Server** (`Aperture.Server/Casting`): `SsdpDiscovery`, `UpnpDescription` (safe XML, address checks), `UpnpRenderer` (SOAP with DIDL-Lite metadata and DLNA headers, faults, size limits), `CastSession` (load, start detection, one fallback to conversion, resume seek, polling, Reconnecting after 3 missed answers and Disconnected after 90 s, takeover detection, saving), `CastManager` and `CastEndpoints`. `ConversionManager` gained MPEG-TS output to a pipe.
+- **Media addresses**: `/cast/{48 hex}/media.ext` or `/stream.ts` on the plain-HTTP setup port, valid only for the TV's IP and only while the cast runs. TVs can't use Aperture's own certificate authority, so HTTPS isn't an option for them; what is served is limited to the one file being cast.
+- **Progress.** While casting, the server's session is the only writer of `playback_history` for that file; `PlayerView` skips its own saves while it is a remote, and moves the engine to the final position when casting ends.
+
+## 14. Advanced playback features (Milestone 9)
+
+Each feature was weighed for user value, complexity, resource use, privacy and upkeep before it was built; the reasoning and what was left out are in [the Milestone 9 report](reports/milestone-9.md).
+
+- **Seek previews** (`Aperture.Playback.Mpv/MpvSeekPreviews`). A second, hidden libmpv instance opens the same file with no audio, no subtitles, software decoding on two threads, keyframe-only seeks and `vo=libmpv` with a software render context, all on one dedicated below-normal thread. Pointer positions are snapped to a grid (`Core/Playback/SeekPreview`: at least 2 s, at most 400 slots per file), the newest request replaces any waiting one, and the last 120 pictures stay in memory only. It starts the first time the pointer is over the timeline and is disposed in the background when the file changes, so ordinary playback pays nothing for it. libmpv's video output waits until each offered frame is drawn, so the thread draws every frame it is offered, not only the one asked for.
+- **A–B loop** (`Core/Playback/LoopPoints`) maps to mpv's `ab-loop-a`/`ab-loop-b`. Loops belong to the open file and are never saved.
+- **Sound options** (`Core/Playback/SoundOptions`) are one FFmpeg filter chain set on mpv's `af`: `dialoguenhance` (centre-channel lift, after downmixing to stereo) and `dynaudnorm` (gentle dynamic normalisation). Neither is AI and nothing leaves the PC. Precedence is the file's own choice, then the show's, then Settings › Sound. If the libmpv build lacks the filters, the engine falls back to unprocessed sound and says so.
+- **Subtitle matching** (`Core/Media/SubtitleFinder`) replaces mpv's own `sub-auto`: files named like the video with language, forced and SDH words; the episode's file in a season folder; anything beside the only video in a folder; and release `Subs/` folders, including `Subs/<video name>/`. Only folders are listed; nothing is downloaded. The engine labels found tracks with their language and SDH/forced flags.
+- **Bookmarks** (`Core/Bookmarks`, `Data/SqliteBookmarkStore`, migration `0006_advanced.sql`) are rows keyed by path, like history.
+- **Per-content choices.** `item_state` gained `clear_dialogue` and `even_volume`; the new `show_choices` table carries audio and subtitle language, speed and sound from one episode of a show to the next (`Core/Series/ShowChoices`). A file's own remembered choices always win.
+- **Diagnostics and recovery.** The log rolls to `aperture.old.log` at 2 MB. `Core/Diagnostics/DiagnosticReport` builds a report from versions, the problem and the last 60 log lines, then removes paths, the user name and the media file's name; it is only copied to the clipboard. A file that was playing and then fails is reopened once at its last position before the error is shown, and the error panel offers Try again.
+

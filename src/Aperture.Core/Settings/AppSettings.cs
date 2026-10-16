@@ -18,6 +18,10 @@ namespace Aperture.Core.Settings;
 /// <param name="RecapSkip">What to do with recaps (each show can differ).</param>
 /// <param name="OfferSkipCredits">Show Skip credits during credits.</param>
 /// <param name="FindSegments">Compare episodes in the background to find intros, recaps and credits.</param>
+/// <param name="YouTubeAutoplay">Play the next video in a YouTube list when one ends (separate from episode autoplay).</param>
+/// <param name="YouTubeAccepted">The user agreed to YouTube's Terms of Service and the privacy notes before using the YouTube section.</param>
+/// <param name="Sound">Sound processing for every video unless a show or file says otherwise (both off by default).</param>
+/// <param name="SeekPreviews">Show a picture of the video when pointing at the timeline.</param>
 public sealed record AppSettings(
     ResumeMode Resume,
     bool RememberHistory,
@@ -32,7 +36,11 @@ public sealed record AppSettings(
     SkipMode IntroSkip = SkipMode.Button,
     SkipMode RecapSkip = SkipMode.Button,
     bool OfferSkipCredits = true,
-    bool FindSegments = true)
+    bool FindSegments = true,
+    bool YouTubeAutoplay = false,
+    bool YouTubeAccepted = false,
+    SoundOptions? Sound = null,
+    bool SeekPreviews = true)
 {
     /// <summary>The choices offered for <see cref="ControlsHideDelaySeconds"/>.</summary>
     public static IReadOnlyList<int> HideDelayChoices { get; } = [2, 3, 5, 10];
@@ -44,10 +52,14 @@ public sealed record AppSettings(
     public static AppSettings Default { get; } = new(Resume: ResumeMode.Resume, RememberHistory: true, ControlsHideDelaySeconds: 3)
     {
         Subtitles = SubtitleStyle.Default,
+        Sound = SoundOptions.Off,
     };
 
     /// <summary>Subtitle style, never null.</summary>
     public SubtitleStyle SubtitleStyle => Subtitles ?? SubtitleStyle.Default;
+
+    /// <summary>Sound options, never null.</summary>
+    public SoundOptions SoundDefaults => Sound ?? SoundOptions.Off;
 
     /// <summary>Returns a copy with out-of-range values replaced by defaults.</summary>
     public AppSettings Normalized() => this with
@@ -61,5 +73,6 @@ public sealed record AppSettings(
         NextEpisodeCountdownSeconds = CountdownChoices.Contains(NextEpisodeCountdownSeconds) ? NextEpisodeCountdownSeconds : Default.NextEpisodeCountdownSeconds,
         IntroSkip = Enum.IsDefined(IntroSkip) ? IntroSkip : Default.IntroSkip,
         RecapSkip = Enum.IsDefined(RecapSkip) ? RecapSkip : Default.RecapSkip,
+        Sound = Sound ?? SoundOptions.Off,
     };
 }

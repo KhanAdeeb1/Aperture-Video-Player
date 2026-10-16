@@ -6,6 +6,7 @@ using Aperture.Core.Library;
 using Aperture.Core.Media;
 using Aperture.Core.Settings;
 using Aperture.Core.Windowing;
+using Aperture.Core.YouTube;
 using Aperture.Playback.Mpv;
 using Aperture.Playback.Mpv.Interop;
 using Aperture.Video;
@@ -24,8 +25,8 @@ using Windows.UI.Core;
 namespace Aperture.App;
 
 /// <summary>
-/// The one Aperture window: owns navigation between Home, Library, Settings and the
-/// player, the window modes (windowed, full screen, mini-player), window-wide keyboard
+/// The one Aperture window: owns navigation between Home, Library, YouTube, Settings and the
+/// players, the window modes (windowed, full screen, mini-player), window-wide keyboard
 /// shortcuts, adding library folders, drag and drop, and the title bar.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage(
@@ -86,16 +87,28 @@ public sealed partial class MainWindow : Window
         LibraryPage.PlayRequested += async (_, request) => await OpenFileAsync(request.Path, request.FromStart);
         LibraryPage.AddFolderRequested += async (_, _) => await AddLibraryFolderAsync();
         LibraryPage.FoldersRequested += (_, _) => ShowSettings();
+        YouTubePage.PlayRequested += async (_, request) => await OpenYouTubeAsync(request);
+        YouTubePage.SettingsRequested += (_, _) =>
+        {
+            ShowSettings();
+            SettingsPage.BringYouTubeIntoView();
+        };
+        YouTubePage.Declined += async (_, _) => await ShowHomeAsync();
+        YouTubePlayerPage.FullscreenChanged += (_, full) => SetYouTubeFullscreen(full);
+        VisibilityChanged += (_, e) => YouTubePlayerPage.SetVisibleToUser(e.Visible);
 
         if (_services is { } services)
         {
             PlayerPage.Initialize(_engine, _presenter, _engineProblem, services, () => _shortcuts);
             HomePage.Initialize(services, _thumbnails);
             LibraryPage.Initialize(services, _thumbnails);
+            YouTubePage.Initialize(services);
+            YouTubePlayerPage.Initialize(services);
             SettingsPage.Initialize(services, () => _shortcuts, _engine?.SupportsSubtitleBox ?? true);
             SettingsPage.SettingsChanged += (_, settings) =>
             {
                 PlayerPage.ApplySettings(settings);
+                YouTubePlayerPage.ApplySettings(settings);
                 services.Analysis.Update(services.Shows.Catalog, settings.FindSegments);
             };
             SettingsPage.ShortcutsChanged += (_, map) =>
@@ -105,6 +118,9 @@ public sealed partial class MainWindow : Window
             };
             SettingsPage.HistoryCleared += (_, _) => _thumbnails.Clear();
             SettingsPage.AddFolderRequested += async (_, _) => await AddLibraryFolderAsync();
+            SettingsPage.FfmpegPickRequested += async (_, _) => await PickFfmpegAsync();
+            SettingsPage.YouTubeChanged += (_, _) => YouTubePage.ForgetCachedLists();
+            SettingsPage.YouTubeDataCleared += async (_, _) => await YouTubePlayerPage.ClearBrowsingDataAsync();
             services.Library.Changed += (_, _) => DispatcherQueue.TryEnqueue(() =>
             {
                 ScheduleHomeRefresh();
@@ -122,6 +138,7 @@ public sealed partial class MainWindow : Window
             SettingsButton.Visibility = Visibility.Collapsed;
             OpenButton.Visibility = Visibility.Collapsed;
             LibraryButton.Visibility = Visibility.Collapsed;
+            YouTubeButton.Visibility = Visibility.Collapsed;
             StartupErrorPanel.Visibility = Visibility.Visible;
             StartupErrorDetail.Text = startup.Failure is null
                 ? string.Empty
@@ -138,6 +155,8 @@ public sealed partial class MainWindow : Window
         Library,
         Settings,
         Player,
+        YouTube,
+        YouTubePlayer,
     }
 
     private bool IsFullscreen => AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
@@ -227,6 +246,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Aperture.ico"));
         SetCaptionButtonsVisible(true);
 
         var scale = Scale();
@@ -283,22 +303,39 @@ public sealed partial class MainWindow : Window
             LibraryPage.Hide();
         }
 
+        // Leaving the YouTube player stops it: YouTube videos never play in the background.
+        if (_screen == Screen.YouTubePlayer && screen != Screen.YouTubePlayer)
+        {
+            _ = YouTubePlayerPage.CloseAsync();
+        }
+
         _screen = screen;
         HomePage.Visibility = screen == Screen.Home && _services is not null ? Visibility.Visible : Visibility.Collapsed;
         LibraryPage.Visibility = screen == Screen.Library ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = screen == Screen.Settings ? Visibility.Visible : Visibility.Collapsed;
+        YouTubePage.Visibility = screen == Screen.YouTube ? Visibility.Visible : Visibility.Collapsed;
+        YouTubePlayerPage.Visibility = screen == Screen.YouTubePlayer ? Visibility.Visible : Visibility.Collapsed;
         PlayerPage.Visibility = screen == Screen.Player ? Visibility.Visible : Visibility.Collapsed;
         PageHost.Visibility = screen == Screen.Player ? Visibility.Collapsed : Visibility.Visible;
 
-        var browsing = screen is Screen.Home or Screen.Library;
+        var browsing = screen is Screen.Home or Screen.Library or Screen.YouTube or Screen.YouTubePlayer;
         AppTitleBar.IsBackButtonVisible = screen != Screen.Home;
         AppTitleBar.Title = screen == Screen.Player ? PlayerPage.Title : string.Empty;
         Wordmark.Visibility = screen == Screen.Player ? Visibility.Collapsed : Visibility.Visible;
         SearchBox.Visibility = browsing && _services is not null ? Visibility.Visible : Visibility.Collapsed;
-        SearchBox.PlaceholderText = screen == Screen.Library ? "Search the library" : "Search";
+        SearchBox.PlaceholderText = screen switch
+        {
+            Screen.Library => "Search the library",
+            Screen.YouTube or Screen.YouTubePlayer => "Search YouTube or paste a link",
+            _ => "Search",
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            SearchBox,
+            screen is Screen.YouTube or Screen.YouTubePlayer ? "Search YouTube or paste a YouTube link" : "Search your library and played videos");
         GlobalActions.Visibility = screen == Screen.Player ? Visibility.Collapsed : Visibility.Visible;
         SettingsButton.Visibility = screen == Screen.Settings || _services is null ? Visibility.Collapsed : Visibility.Visible;
         LibraryButton.Visibility = screen == Screen.Library || _services is null ? Visibility.Collapsed : Visibility.Visible;
+        YouTubeButton.Visibility = screen == Screen.YouTube || _services is null ? Visibility.Collapsed : Visibility.Visible;
         SetChromeVisible(true);
     }
 
@@ -321,6 +358,57 @@ public sealed partial class MainWindow : Window
         ClearSearch();
         ShowScreen(Screen.Library);
         await LibraryPage.ShowAsync(category);
+    }
+
+    private async Task ShowYouTubeAsync()
+    {
+        if (_services is null)
+        {
+            return;
+        }
+
+        await LeaveWindowModesAndPlayerAsync();
+        if (_screen != Screen.YouTubePlayer)
+        {
+            ClearSearch();
+        }
+
+        ShowScreen(Screen.YouTube);
+        await YouTubePage.ShowAsync();
+    }
+
+    /// <summary>Plays a YouTube video in YouTube's embedded player (separate from the local player).</summary>
+    private async Task OpenYouTubeAsync(YouTubePlayRequest request)
+    {
+        if (_services is null)
+        {
+            return;
+        }
+
+        await LeaveWindowModesAndPlayerAsync();
+        ClearSearch();
+        ShowScreen(Screen.YouTubePlayer);
+        await YouTubePlayerPage.OpenAsync(request.VideoId, request.Video, request.Start, request.Queue, request.FromStart);
+    }
+
+    /// <summary>YouTube's player went full screen (its own button): the window follows, without Aperture's title bar.</summary>
+    private void SetYouTubeFullscreen(bool fullscreen)
+    {
+        AppTitleBar.Visibility = fullscreen ? Visibility.Collapsed : Visibility.Visible;
+        if (fullscreen && !IsFullscreen)
+        {
+            if (IsMini)
+            {
+                SetWindowed();
+            }
+
+            RememberWindowedBounds();
+            AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+        }
+        else if (!fullscreen && IsFullscreen)
+        {
+            SetWindowed();
+        }
     }
 
     /// <summary>Leaving the player goes back to where the video was chosen (Home or the library).</summary>
@@ -347,6 +435,10 @@ public sealed partial class MainWindow : Window
         {
             await PlayerPage.CloseAsync();
         }
+        else if (_screen == Screen.YouTubePlayer)
+        {
+            await YouTubePlayerPage.CloseAsync();
+        }
     }
 
     private void ShowSettings()
@@ -356,7 +448,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _screenBeforeSettings = _screen == Screen.Player ? _screenBeforePlayer : _screen;
+        _screenBeforeSettings = _screen switch
+        {
+            Screen.Player => _screenBeforePlayer,
+            Screen.YouTubePlayer => Screen.YouTube,
+            _ => _screen,
+        };
         if (_screen == Screen.Player)
         {
             if (IsMini || IsFullscreen)
@@ -384,6 +481,16 @@ public sealed partial class MainWindow : Window
                 break;
             case Screen.Settings when _screenBeforeSettings == Screen.Library:
                 await ShowLibraryAsync();
+                break;
+            case Screen.Settings when _screenBeforeSettings == Screen.YouTube:
+            case Screen.YouTubePlayer:
+                await ShowYouTubeAsync();
+                break;
+            case Screen.YouTube when YouTubePage.IsShowingResults:
+                await YouTubePage.ShowShelvesAsync();
+                break;
+            case Screen.YouTube:
+                await ShowHomeAsync();
                 break;
             case Screen.Settings:
             case Screen.Library:
@@ -465,10 +572,42 @@ public sealed partial class MainWindow : Window
 
     private async void OnLibraryClick(object sender, RoutedEventArgs e) => await ShowLibraryAsync();
 
+    private async void OnYouTubeClick(object sender, RoutedEventArgs e) => await ShowYouTubeAsync();
+
+    /// <summary>
+    /// Enter in the search box. In the YouTube section it searches YouTube (only on Enter, since
+    /// each search spends quota) or plays a pasted link; elsewhere a pasted YouTube link opens it.
+    /// </summary>
+    private async void OnSearchQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        var text = args.QueryText;
+        if (_screen is Screen.YouTube or Screen.YouTubePlayer)
+        {
+            if (_screen == Screen.YouTubePlayer)
+            {
+                await ShowYouTubeAsync();
+            }
+
+            await YouTubePage.SubmitAsync(text);
+        }
+        else if (YouTubeLink.TryParse(text) is not null && _services is not null)
+        {
+            ClearSearch();
+            await ShowYouTubeAsync();
+            await YouTubePage.SubmitAsync(text);
+        }
+    }
+
     private async void OnOpenClick(object sender, RoutedEventArgs e) => await PickAndOpenAsync();
 
     private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
+        if (_screen is Screen.YouTube or Screen.YouTubePlayer)
+        {
+            // YouTube is searched on Enter only.
+            return;
+        }
+
         if (_screen == Screen.Library)
         {
             LibraryPage.Search(sender.Text);
@@ -701,6 +840,33 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task PickFfmpegAsync()
+    {
+        var picker = new FileOpenPicker(AppWindow.Id)
+        {
+            SuggestedStartLocation = PickerLocationId.ComputerFolder,
+            ViewMode = PickerViewMode.List,
+            CommitButtonText = "Use this FFmpeg",
+        };
+        picker.FileTypeFilter.Add(".exe");
+
+        PickFileResult? result;
+        try
+        {
+            result = await picker.PickSingleFileAsync();
+        }
+        catch (System.Runtime.InteropServices.COMException error)
+        {
+            AppLog.Error("The file picker failed to open", error);
+            return;
+        }
+
+        if (result is not null && !string.IsNullOrEmpty(result.Path))
+        {
+            await SettingsPage.SetFfmpegPathAsync(result.Path);
+        }
+    }
+
     private async Task PickSubtitleAsync()
     {
         var picker = new FileOpenPicker(AppWindow.Id)
@@ -917,7 +1083,7 @@ public sealed partial class MainWindow : Window
         if (control && !alt && e.Key == VirtualKey.F)
         {
             e.Handled = true;
-            if (_screen is not (Screen.Home or Screen.Library))
+            if (_screen is not (Screen.Home or Screen.Library or Screen.YouTube or Screen.YouTubePlayer))
             {
                 await ShowHomeAsync();
             }
@@ -942,9 +1108,15 @@ public sealed partial class MainWindow : Window
             else if (IsFullscreen || IsMini)
             {
                 e.Handled = true;
+                if (_screen == Screen.YouTubePlayer)
+                {
+                    YouTubePlayerPage.ExitFullscreen();
+                    AppTitleBar.Visibility = Visibility.Visible;
+                }
+
                 SetWindowed();
             }
-            else if (_screen is Screen.Home or Screen.Library && SearchBox.Text.Length > 0)
+            else if (_screen is Screen.Home or Screen.Library or Screen.YouTube && SearchBox.Text.Length > 0)
             {
                 e.Handled = true;
                 SearchBox.Text = string.Empty;
@@ -952,12 +1124,16 @@ public sealed partial class MainWindow : Window
                 {
                     LibraryPage.FocusFirstItem();
                 }
+                else if (_screen == Screen.YouTube)
+                {
+                    YouTubePage.FocusFirstItem();
+                }
                 else
                 {
                     HomePage.FocusFirstItem();
                 }
             }
-            else if (_screen is Screen.Settings or Screen.Library)
+            else if (_screen is Screen.Settings or Screen.Library or Screen.YouTube)
             {
                 e.Handled = true;
                 await GoBackAsync();
@@ -1032,6 +1208,7 @@ public sealed partial class MainWindow : Window
         args.Cancel = true;
         _closingSaved = true;
         await PlayerPage.CloseAsync();
+        await YouTubePlayerPage.CloseAsync();
 
         // A running scan stops here; everything it found is already saved and the next scan resumes.
         _services?.Library.Dispose();

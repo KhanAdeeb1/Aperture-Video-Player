@@ -21,11 +21,20 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      # The media server's conversion tests use FFmpeg (they are reported as skipped without it).
+      - name: Install FFmpeg (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Install FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
       - name: Test platform-neutral projects
         run: |
           dotnet test tests/Aperture.Core.Tests/Aperture.Core.Tests.csproj -c Release
           dotnet test tests/Aperture.Data.Tests/Aperture.Data.Tests.csproj -c Release
           dotnet test tests/Aperture.Media.Tests/Aperture.Media.Tests.csproj -c Release
+          dotnet test tests/Aperture.YouTube.Tests/Aperture.YouTube.Tests.csproj -c Release
+          dotnet test tests/Aperture.Server.Tests/Aperture.Server.Tests.csproj -c Release --logger "console;verbosity=normal"
 
   test-media:
     name: Generate test media
@@ -112,10 +121,25 @@ jobs:
         run: |
           $rid = if ('${{ matrix.platform }}' -eq 'x64') { 'win-x64' } else { 'win-arm64' }
           $dir = "src/Aperture.App/bin/${{ matrix.platform }}/Release/net10.0-windows10.0.22621.0/$rid"
-          foreach ($dll in 'libmpv-2.dll', 'av_libglesv2.dll') {
+          foreach ($dll in 'libmpv-2.dll', 'av_libglesv2.dll', 'Server/Aperture.Server.exe', 'Server/wwwroot/app.js') {
             if (-not (Test-Path (Join-Path $dir $dll))) { throw "$dll is missing from $dir" }
             Write-Host "$dll present ($((Get-Item (Join-Path $dir $dll)).Length) bytes)"
           }
+      - name: Media server starts and stops on its own
+        if: matrix.platform == 'x64'
+        shell: pwsh
+        run: |
+          $server = "src/Aperture.App/bin/x64/Release/net10.0-windows10.0.22621.0/win-x64/Server/Aperture.Server.exe"
+          $env:APERTURE_DATA_DIR = Join-Path $env:RUNNER_TEMP "aperture-server-smoke"
+          $p = Start-Process -FilePath $server -ArgumentList 'run', '--background' -PassThru -WindowStyle Hidden
+          $deadline = (Get-Date).AddSeconds(30)
+          do { Start-Sleep -Seconds 1; & $server status | Out-Null } until ($LASTEXITCODE -eq 0 -or $p.HasExited -or (Get-Date) -gt $deadline)
+          & $server status
+          if ($LASTEXITCODE -ne 0) { Get-Content (Join-Path $env:APERTURE_DATA_DIR 'Logs/server.log') -ErrorAction SilentlyContinue; throw "the media server did not start (exit $($p.ExitCode))" }
+          & $server stop
+          if (-not $p.WaitForExit(20000)) { throw 'the media server did not stop' }
+          Write-Host "Stopped with exit code $($p.ExitCode)"
+          Get-Content (Join-Path $env:APERTURE_DATA_DIR 'Logs/server.log')
       - name: Launch smoke test
         if: matrix.platform == 'x64'
         shell: pwsh
@@ -137,6 +161,68 @@ jobs:
           Write-Host "Aperture started and opened its window: '$($p.MainWindowTitle)'"
           Stop-Process -Id $p.Id -Force
           if (Test-Path $log) { Get-Content $log }
+
+  release-package:
+    name: Release package (${{ matrix.platform }})
+    needs: test-media
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x64, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Install Inno Setup if the runner lacks it
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Build the installer and portable zip
+        shell: pwsh
+        run: tools/Build-Release.ps1 -Platform ${{ matrix.platform }} -OutDir "$env:RUNNER_TEMP/release"
+      # An "older version" built from the same files, so the upgrade path can be exercised.
+      - name: Build a stand-in older installer
+        if: matrix.platform == 'x64'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc /Qp /DAppVersion=0.0.9 /DPlatform=x64 "/DSourceDir=$env:RUNNER_TEMP\release\publish-win-x64" "/DOutputDir=$env:RUNNER_TEMP\older" installer/Aperture.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed ($LASTEXITCODE)" }
+      - uses: actions/download-artifact@v4
+        if: matrix.platform == 'x64'
+        with:
+          name: test-media
+          path: ${{ runner.temp }}/test-media
+      - name: Install, upgrade and uninstall
+        if: matrix.platform == 'x64'
+        shell: pwsh
+        run: >
+          tools/packaging/Test-Install.ps1
+          -OldSetup "$env:RUNNER_TEMP/older/Aperture-0.0.9-x64-setup.exe"
+          -NewSetup (Get-ChildItem "$env:RUNNER_TEMP/release/Aperture-*-x64-setup.exe").FullName
+          -Video "$env:RUNNER_TEMP/test-media/Night Market.mkv"
+      - name: Open and close 20 times, then play for 10 minutes
+        if: matrix.platform == 'x64'
+        shell: powershell
+        run: >
+          tools/packaging/Test-Soak.ps1
+          -Exe "$env:RUNNER_TEMP/release/publish-win-x64/Aperture.exe"
+          -Video "$env:RUNNER_TEMP/test-media/Harbour Lights.mp4"
+          -OutDir "$env:RUNNER_TEMP/soak" -Cycles 20 -Minutes 10
+      - name: Release files
+        shell: pwsh
+        run: Get-ChildItem "$env:RUNNER_TEMP/release" -File | ForEach-Object { "{0,-45} {1,8:N0} MB" -f $_.Name, ($_.Length / 1MB) }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aperture-${{ matrix.platform }}
+          path: |
+            ${{ runner.temp }}/release/*.exe
+            ${{ runner.temp }}/release/*.zip
+            ${{ runner.temp }}/release/SHA256SUMS-*.txt
+          retention-days: 14
+          compression-level: 0
 
   visual-review:
     name: Visual review screenshots
@@ -172,6 +258,8 @@ jobs:
           Get-Content "$env:RUNNER_TEMP/visual-review/notes.txt" -ErrorAction SilentlyContinue
           Write-Host '--- aperture.log'
           Get-Content "$env:RUNNER_TEMP/visual-review/aperture.log" -ErrorAction SilentlyContinue
+          Write-Host '--- server.log'
+          Get-Content "$env:RUNNER_TEMP/visual-review/server.log" -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         if: always()
         with:

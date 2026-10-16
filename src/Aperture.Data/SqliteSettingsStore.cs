@@ -27,6 +27,11 @@ public sealed class SqliteSettingsStore(ApertureDatabase database) : ISettingsSt
     private const string RecapSkipKey = "episodes.recapSkip";
     private const string SkipCreditsKey = "episodes.offerSkipCredits";
     private const string FindSegmentsKey = "episodes.findSegments";
+    private const string YouTubeAutoplayKey = "youtube.autoplay";
+    private const string YouTubeAcceptedKey = "youtube.accepted";
+    private const string ClearDialogueKey = "sound.clearDialogue";
+    private const string EvenVolumeKey = "sound.evenVolume";
+    private const string SeekPreviewsKey = "playback.seekPreviews";
     private const string ShortcutPrefix = "shortcut.";
 
     public async Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default)
@@ -53,7 +58,13 @@ public sealed class SqliteSettingsStore(ApertureDatabase database) : ISettingsSt
             IntroSkip: ReadEnum(values, IntroSkipKey, (SkipMode?)null) ?? defaults.IntroSkip,
             RecapSkip: ReadEnum(values, RecapSkipKey, (SkipMode?)null) ?? defaults.RecapSkip,
             OfferSkipCredits: ReadBool(values, SkipCreditsKey, defaults.OfferSkipCredits),
-            FindSegments: ReadBool(values, FindSegmentsKey, defaults.FindSegments)).Normalized();
+            FindSegments: ReadBool(values, FindSegmentsKey, defaults.FindSegments),
+            YouTubeAutoplay: ReadBool(values, YouTubeAutoplayKey, defaults.YouTubeAutoplay),
+            YouTubeAccepted: ReadBool(values, YouTubeAcceptedKey, defaults.YouTubeAccepted),
+            Sound: new SoundOptions(
+                ReadBool(values, ClearDialogueKey, defaults.SoundDefaults.ClearDialogue),
+                ReadBool(values, EvenVolumeKey, defaults.SoundDefaults.EvenVolume)),
+            SeekPreviews: ReadBool(values, SeekPreviewsKey, defaults.SeekPreviews)).Normalized();
     }
 
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
@@ -80,6 +91,11 @@ public sealed class SqliteSettingsStore(ApertureDatabase database) : ISettingsSt
                 (RecapSkipKey, settings.RecapSkip.ToString()),
                 (SkipCreditsKey, Bool(settings.OfferSkipCredits)),
                 (FindSegmentsKey, Bool(settings.FindSegments)),
+                (YouTubeAutoplayKey, Bool(settings.YouTubeAutoplay)),
+                (YouTubeAcceptedKey, Bool(settings.YouTubeAccepted)),
+                (ClearDialogueKey, Bool(settings.SoundDefaults.ClearDialogue)),
+                (EvenVolumeKey, Bool(settings.SoundDefaults.EvenVolume)),
+                (SeekPreviewsKey, Bool(settings.SeekPreviews)),
             ],
             deletePrefix: null,
             cancellationToken).ConfigureAwait(false);

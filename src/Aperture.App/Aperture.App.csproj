@@ -12,12 +12,16 @@
     <RootNamespace>Aperture.App</RootNamespace>
     <AssemblyName>Aperture</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Aperture.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Without this, dotnet publish of an unpackaged app leaves out the compiled XAML resources
+         (the .pri file) and the published app fails at launch with 0xC000027B. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
     <SelfContained>true</SelfContained>
   </PropertyGroup>
 
@@ -37,6 +41,14 @@
     <ProjectReference Include="..\Aperture.Media\Aperture.Media.csproj" />
     <ProjectReference Include="..\Aperture.Playback.Mpv\Aperture.Playback.Mpv.csproj" />
     <ProjectReference Include="..\Aperture.Video\Aperture.Video.csproj" />
+    <ProjectReference Include="..\Aperture.YouTube\Aperture.YouTube.csproj" />
+  </ItemGroup>
+
+  <!-- The page that hosts YouTube's embedded player, served to WebView2 from a virtual host. -->
+  <ItemGroup>
+    <Content Include="Assets\YouTube\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The mark, drawn by tools/brand/make-icon.py: the exe's icon and the window's taskbar icon. -->
+    <Content Include="Assets\Aperture.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--
@@ -51,5 +63,18 @@
   <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
     <Content Include="..\..\third_party\bin\$(RuntimeIdentifier)\libmpv-2.dll" Link="libmpv-2.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!--
+    The media server is a separate program (src/Aperture.Server) so it can keep running after
+    the app closes. It is published self-contained for the same platform into Server\ next to
+    Aperture.exe, where Settings › Media server starts it. See docs/media-server.md.
+  -->
+  <Target Name="PublishMediaServer" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT' And '$(RuntimeIdentifier)' != ''">
+    <Exec Command="dotnet publish &quot;$(MSBuildThisFileDirectory)..\Aperture.Server\Aperture.Server.csproj&quot; -c $(Configuration) -r $(RuntimeIdentifier) --self-contained -nologo -o &quot;$(OutDir)Server&quot;" />
+  </Target>
+
+  <Target Name="PublishMediaServerWithApp" AfterTargets="Publish" Condition="'$(OS)' == 'Windows_NT' And '$(RuntimeIdentifier)' != ''">
+    <Exec Command="dotnet publish &quot;$(MSBuildThisFileDirectory)..\Aperture.Server\Aperture.Server.csproj&quot; -c $(Configuration) -r $(RuntimeIdentifier) --self-contained -nologo -o &quot;$(PublishDir)Server&quot;" />
+  </Target>
 
 </Project>

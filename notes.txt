@@ -1,0 +1,127 @@
+captured 01-first-launch (1266 x 793)
+captured 01b-first-launch-small-window (886 x 593)
+captured 02-open-file-dialog (1920 x 1080)
+Field Notes, Kyoto.mp4: playing, position advanced 4.2 -> 6.3 s of 240 s
+Northern Ridge.mp4: playing, position advanced 3.8 -> 5.8 s of 720 s
+Coastline at Dusk.mp4: playing, position advanced 3.8 -> 5.8 s of 540 s
+Studio Session 04.mp4: playing, position advanced 3.8 -> 5.8 s of 360 s
+First Light.mp4: playing, position advanced 3.8 -> 5.8 s of 180 s
+Night Drive.mp4: playing, position advanced 3.8 -> 5.8 s of 1080 s
+Harbour Lights.mp4: playing, position advanced 3.8 -> 5.8 s of 1440 s
+captured 05-opening (1266 x 793)
+captured 03-playback-controls-visible (1266 x 793)
+captured 04-playback-controls-hidden (1266 x 793)
+captured 06-playback-more-menu (1266 x 793)
+captured 09-playback-paused (1266 x 793)
+captured 07-mini-player (504 x 284)
+captured 07b-mini-player-idle (504 x 284)
+captured 08-fullscreen-controls-visible (1920 x 1080)
+captured 08b-fullscreen-controls-hidden (1920 x 1080)
+captured 08c-after-fullscreen (1266 x 793)
+captured 10-home (1266 x 793)
+captured 13-home-hover (1266 x 793)
+captured 11-home-1920 (1906 x 1033)
+captured 12-home-1024 (1010 x 693)
+captured 14-home-keyboard-focus (1266 x 793)
+captured 15-search-results (1266 x 793)
+captured 16-search-no-results (1266 x 793)
+captured 17-settings (1266 x 793)
+captured 18-error-not-found (1266 x 793)
+captured 19-unsupported-file (1266 x 793)
+captured 20-unsupported-format (1266 x 793)
+captured 30-render-gpu (1266 x 793)
+GPU path: top rgb(241,160,42) bottom rgb(26,82,196)
+GPU path after resize: top rgb(241,160,42) bottom rgb(26,82,196)
+captured 31-render-gpu-fullscreen (1920 x 1080)
+GPU path in full screen: top rgb(241,160,42) bottom rgb(26,82,196)
+captured 32-render-software (1266 x 793)
+Software path: top rgb(241,160,42) bottom rgb(26,82,196)
+Archive Scan.mkv (FFV1): position advanced 2.8 -> 4.8 s
+captured 33-ffv1-playing (1266 x 793)
+Subtitle toast after C: Subtitles: English
+captured 40-subtitles-toast (1266 x 793)
+captured 41-subtitles-shown (1266 x 793)
+captured 42-tracks-menu (1266 x 793)
+captured 43-audio-switched (1266 x 793)
+captured 44-playback-info (1266 x 793)
+Playback info: File | Name | Night Market.mkv | Container | mkv | Size | 977 KB | Length | 1:00 | Video | Codec | H.264 | Resolution | 960×540 | Shown at | 960×540 | Frame rate | 12 fps | Pixel format | yuv420p | Colour | bt.601 · bt.709 · bt.1886 | Decoding | Software | Dropped frames | 0 | Subtitles | Format | SubRip | Source | In the video file | Playback | Speed | Normal | Buffered ahead | 1.1 s | Renderer | GPU: OpenGL ES 3.0 (ANGLE 2.1.1 git hash: 1c89805903c1) on Microsoft Basic Render Driver (EGL 1.5), fast scaling (no GPU) | Engine | mpv v0.41.0-1175-g492bae076 | No sound device is available, so this video is playing without sound. | Night Market | Back | Night Market | Drop to play
+captured 45-picture-fill (1266 x 793)
+captured 46-speed-toast (1266 x 793)
+captured 21-error-damaged (1266 x 793)
+captured 47-subtitle-delay-toast (1266 x 793)
+Subtitle offset after three presses of X: Subtitles 0.3 s later
+captured 48-adjust-panel (1266 x 793)
+captured 49-shortcuts-panel (1266 x 793)
+captured 100-seek-preview (1266 x 793)
+Seek preview time: 5:20
+After B: Bookmarked 12:26 · Shift+B shows bookmarks
+captured 101-bookmark-toast (1266 x 793)
+captured 102-bookmarks-panel (1266 x 793)
+Loop chip after Shift+L twice: Loop 12:29 – 12:32
+captured 103-loop-chip (1266 x 793)
+After D: Clearer dialogue on
+captured 104-clear-dialogue-toast (1266 x 793)
+captured 105-more-menu-advanced (1266 x 793)
+captured 106-settings-sound (1266 x 793)
+captured 107-error-retry-copy (1266 x 793)
+Copied report: Aperture diagnostic report | (file and folder names removed) |  | Aperture: 0.1.0+f93d060f519432c2711dd695ee2403c374d33e3d | Windows: Microsoft Windows NT 10.0.26100.0 | .NET: .NET 10.0.13 | Processor: X64 | Engine: libmpv client API 2.5
+captured 50-shortcut-editor (1266 x 793)
+captured 60-library-no-folders (1266 x 793)
+captured 61-add-folder-kind (1266 x 793)
+captured 62-library-scanning (1266 x 793)
+captured 63-library (1266 x 793)
+Library after the first scan: 10 cards
+Library after scanning again: 10 cards
+captured 64-library-search (1266 x 793)
+Library search for 'night': 4 cards
+captured 65-library-1024 (1010 x 693)
+captured 66-card-menu (1266 x 793)
+captured 67-edit-details (1266 x 793)
+captured 68-home-with-library (1266 x 793)
+Library after a restart: 10 cards
+  2026-10-17 20:40:31.160 +00:00 INFO Analysed Night Shift S01E01 Pilot.mp4 (sound read, 1 dark stretches, 0 chapters, compared with 2): Intro 00:00:09–00:00:29 (0.80), Credits 00:01:59–00:02:24 (0.95)
+  2026-10-17 20:40:31.179 +00:00 INFO Analysed Night Shift S01E02 The Long Hour.mp4 (sound read, 1 dark stretches, 0 chapters, compared with 2): Intro 00:00:25–00:00:45 (0.80), Credits 00:02:00–00:02:24 (0.95)
+  2026-10-17 20:40:31.188 +00:00 INFO Analysed Night Shift S01E03.mp4 (sound read, 1 dark stretches, 0 chapters, compared with 2): Intro 00:00:04–00:00:23 (0.80), Credits 00:02:00–00:02:24 (0.95)
+Skip button: 'Skip intro'
+captured 70-skip-intro (1266 x 793)
+After Skip intro: 30.8 s
+Next-up caption at the credits: 'Next episode in 10 s'
+captured 71-next-episode-countdown (1266 x 793)
+captured 72-countdown-cancelled (1266 x 793)
+Next-up caption at the end after cancelling: 'Next episode'
+captured 73-next-episode-playing (1266 x 793)
+Autoplay opened S1 E3 when the countdown ended
+captured 74-intro-credits-panel (1266 x 793)
+captured 76-settings-episodes (1266 x 793)
+captured 77-home-up-next (1266 x 793)
+Next-up caption with autoplay off: 'Next episode'
+captured 75-autoplay-off (1266 x 793)
+captured 35-resume-choice (1266 x 793)
+captured 80-youtube-consent (1266 x 793)
+captured 81-youtube-no-key (1266 x 793)
+YouTube: playback NOT confirmed; YouTube's player refused this machine (error 150), shown as 'This video only plays on YouTube'
+captured 82-youtube-player-refused (1266 x 793)
+captured 83-youtube-saved (1266 x 793)
+Unavailable video: This video isn’t available
+captured 84-youtube-unavailable (1266 x 793)
+captured 85-settings-youtube (1266 x 793)
+Media server before starting: Off.
+captured 90-settings-media-server (1266 x 793)
+Passphrase: Passphrase saved. Any device that was signed in needs it to sign in again.
+Media server after Start: On.
+Media server: signed in over HTTPS and listed the shared library
+captured 91-settings-media-server-running (1266 x 793)
+Connect a device shows: http://10.1.0.115:8080
+Media server: still answering after Aperture closed
+Media server: stopped, started again and stopped from Settings
+Cast picker with the server off: Casting sends the video through Aperture's media server, which is off.
+captured 95-cast-picker-server-off (1266 x 793)
+Cast picker lists: Play on Living Room TV
+captured 96-cast-picker (1266 x 793)
+Casting view: Playing on Living Room TV; delivery: Plays the original file. Without FFmpeg Aperture can't check what's inside it first.
+Casting position: 10:50
+captured 97-casting (1266 x 793)
+After Space: Paused on Living Room TV
+After Stop casting: Stopped casting at 10:51. Press Space to carry on here.
+captured 98-cast-stopped (1266 x 793)
+Casting: the stand-in TV fetched the media, paused and stopped

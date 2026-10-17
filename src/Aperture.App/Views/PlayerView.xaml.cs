@@ -54,6 +54,7 @@ public sealed partial class PlayerView : UserControl
     private readonly DispatcherQueueTimer _infoTimer;
     private readonly DispatcherQueueTimer _volumeSaveTimer;
     private readonly CursorVisibility _cursor = new();
+    private readonly ScreenKeepAwake _keepAwake = new();
     private readonly IdleOverlay _overlay;
 
     private MpvPlaybackEngine? _engine;
@@ -188,6 +189,7 @@ public sealed partial class PlayerView : UserControl
             _bridge?.Detach();
             _bridge = null;
             _engine = null;
+            _keepAwake.Release();
             return;
         }
 
@@ -395,6 +397,7 @@ public sealed partial class PlayerView : UserControl
         _overlay.Reset();
         _cursor.Show();
         _engine?.Close();
+        _keepAwake.Release();
         _path = null;
         ResetAdvancedState();
         await SaveVolumeAsync();
@@ -721,6 +724,17 @@ public sealed partial class PlayerView : UserControl
 
         UpdateEpisodeCues();
         var playing = _engine.Status == PlaybackStatus.Playing;
+
+        // The screen stays on only while a file is actually playing, never while paused or idle.
+        if (playing)
+        {
+            _keepAwake.Hold();
+        }
+        else
+        {
+            _keepAwake.Release();
+        }
+
         PlayPauseGlyph.Glyph = playing ? PauseGlyph : PlayGlyph;
         AutomationName(PlayPauseButton, playing ? "Pause" : "Play", _shortcuts().WithKey(playing ? "Pause" : "Play", PlayerCommand.PlayPause));
         _overlay.Poke();

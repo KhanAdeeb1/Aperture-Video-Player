@@ -13,4 +13,9 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "GetDpiForWindow")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     internal static partial uint GetDpiForWindow(nint hwnd);
+
+    /// <summary>Win32 SetThreadExecutionState: asks Windows not to idle the display or system; 0 on failure.</summary>
+    [LibraryImport("kernel32.dll", EntryPoint = "SetThreadExecutionState")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    internal static partial uint SetThreadExecutionState(uint flags);
 }

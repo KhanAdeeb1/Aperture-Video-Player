@@ -12,7 +12,7 @@ The first release of Aperture, a calm video player for Windows 11.
 | ARM PCs (Snapdragon) | `Aperture-0.1.0-ARM64-setup.exe` (built but never started on real hardware) |
 | Without installing | `Aperture-0.1.0-x64-portable.zip` or `…-ARM64-portable.zip` |
 
-Check a download against `SHA256SUMS.txt`. The installer isn't code-signed, so Windows SmartScreen will warn you; see [Installing, upgrading and removing](https://github.com/KhanAdeeb1/Aperture-Video-Player/blob/claude/milestone-0-audit-84kzf1/docs/install.md). No administrator rights are needed, and Aperture doesn't make itself your default player.
+Check a download against `SHA256SUMS.txt`. The installer isn't code-signed, so Windows SmartScreen will warn you; see [Installing, upgrading and removing](https://github.com/KhanAdeeb1/Aperture-Video-Player/blob/HEAD/docs/install.md). No administrator rights are needed, and Aperture doesn't make itself your default player.
 
 ## What's in it
 
@@ -21,7 +21,7 @@ Check a download against `SHA256SUMS.txt`. The installer isn't code-signed, so W
 - Shows in episode order with next episode, Continue watching, and intro, recap and credits detection with Skip buttons.
 - Optional: YouTube in YouTube's own player, a media server for phones and tablets on your home network, and playing on DLNA TVs.
 
-The full list: [What Aperture does](https://github.com/KhanAdeeb1/Aperture-Video-Player/blob/claude/milestone-0-audit-84kzf1/docs/features.md).
+The full list: [What Aperture does](https://github.com/KhanAdeeb1/Aperture-Video-Player/blob/HEAD/docs/features.md).
 
 ## Known limitations
 
